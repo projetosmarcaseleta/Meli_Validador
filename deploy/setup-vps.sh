@@ -1,7 +1,8 @@
 #!/bin/bash
 # ============================================================
-# setup-vps.sh - Configuração inicial do Meli Validador na VPS
-# Uso: bash setup-vps.sh
+# setup-vps.sh - Setup do Meli Validador na VPS
+# Executar na VPS como root ou com sudo:
+# bash setup-vps.sh
 # ============================================================
 
 set -e
@@ -33,7 +34,7 @@ else
     cd "$APP_DIR"
 fi
 
-# 3. Ambiente Virtual
+# 3. Ambiente Virtual Python e Dependências
 echo ""
 echo "🐍 3. Configurando ambiente virtual Python..."
 if [ ! -d "venv" ]; then
@@ -41,44 +42,51 @@ if [ ! -d "venv" ]; then
 fi
 source venv/bin/activate
 pip install --upgrade pip --quiet
-pip install -r requirements.txt --quiet
-pip install -e . --quiet
+pip install -r ml_exporter/requirements.txt --quiet
 
-# 4. Pastas de dados e relatórios
-mkdir -p "$APP_DIR/reports" "$APP_DIR/data"
-
-# 5. Criar .env se não existir
+# 4. Criar .env se não existir
 if [ ! -f "$APP_DIR/.env" ]; then
     echo ""
     echo "📝 4. Criando arquivo .env a partir do .env.example..."
     if [ -f "$APP_DIR/.env.example" ]; then
         cp "$APP_DIR/.env.example" "$APP_DIR/.env"
+    else
+        cat > "$APP_DIR/.env" << 'EOF'
+PORT=3002
+FLASK_DEBUG=0
+SECRET_KEY=sua_chave_secreta_aqui
+PUBLIC_EXPORT_URL=https://validador.marcaseleta.shop/export
+GUMGA_TOKEN=
+ANYMARKET_PLATFORM=SELETA
+EOF
     fi
     echo "  ⚠️  IMPORTANTE: Edite /var/www/Meli_Validador/.env com seus tokens reais!"
 fi
 
-# 6. Configurar Serviço Systemd
+# 5. Configurar Serviço Systemd
 echo ""
-echo "⚙️  5. Configurando serviço Systemd..."
+echo "⚙️  5. Configurando serviço Systemd (meli-validador)..."
 cp "$APP_DIR/deploy/meli-validador.service" /etc/systemd/system/meli-validador.service
 systemctl daemon-reload
 systemctl enable meli-validador
 systemctl restart meli-validador
 
-# 7. Configurar Nginx
+# 6. Configurar Nginx
 if [ -f "$APP_DIR/deploy/nginx-meli-validador.conf" ]; then
     echo ""
     echo "🌐 6. Configurando Nginx..."
     cp "$APP_DIR/deploy/nginx-meli-validador.conf" /etc/nginx/sites-available/meli-validador.conf
     ln -sf /etc/nginx/sites-available/meli-validador.conf /etc/nginx/sites-enabled/meli-validador.conf
-    nginx -t && systemctl reload nginx || echo "⚠️ Verifique o arquivo de configuração do Nginx."
+    nginx -t && systemctl reload nginx || echo "⚠️ Verifique as configurações de domínio no Nginx."
 fi
 
 echo ""
 echo "============================================"
-echo "  ✅ Setup concluído com sucesso!"
+echo "  ✅ Setup do Meli Validador concluído!"
 echo "============================================"
 echo ""
 echo "  📍 Status: systemctl status meli-validador"
 echo "  📍 Logs:   journalctl -u meli-validador -f"
+echo "  📍 Reiniciar: systemctl restart meli-validador"
+echo "  📍 Atualizar: bash /var/www/Meli_Validador/deploy/update-vps.sh"
 echo ""

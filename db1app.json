@@ -1,0 +1,15 @@
+{
+  "nome": "meli-exporter",
+  "descricao": "Gera planilhas Excel de anuncios do Mercado Livre e cruza/audita com dados do AnyMarket (por MLB ou SKU).",
+  "categoria": "operacao",
+  "health_check_path": "/health",
+  "alcance": "pessoal",
+  "fatores": {
+    "altera_outra_app": true,
+    "expoe_api": false,
+    "tem_llm": false,
+    "dado_sensivel": false,
+    "credencial_servico": true,
+    "sem_identidade": true
+  }
+}

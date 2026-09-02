@@ -15,15 +15,12 @@ ENV/
 *.pem
 *.key
 
-# Dados temporários, relatórios e saídas
-reports/
-data/*.txt
-!data/.gitkeep
-*.pdf
-*.json
+# Planilhas e Relatórios gerados
 *.xlsx
+*.xls
 *.csv
-!tests/fixtures/*.csv
+reports/
+data/
 
 # IDEs & Editores
 .vscode/

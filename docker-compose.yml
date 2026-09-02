@@ -1,20 +1,21 @@
 version: '3.8'
 
 services:
-  meli-validador:
+  meli-exporter:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: meli-validador
+    container_name: meli-exporter
     restart: unless-stopped
     ports:
-      - "8765:8765"
+      - "3002:3002"
     env_file:
       - .env
-    volumes:
-      - reports_data:/app/reports
     environment:
-      - PORT=8765
-
-volumes:
-  reports_data:
+      - PORT=3002
+      - FLASK_DEBUG=0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3002/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

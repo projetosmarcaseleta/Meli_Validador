@@ -10,9 +10,9 @@ __pycache__
 .github
 .gitignore
 deploy
-reports
-data/*.txt
-*.pdf
+*.xlsx
+*.xls
+*.csv
 *.zip
 *.tar.gz
 *.log
