@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  meli-validador:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: meli-validador
+    restart: unless-stopped
+    ports:
+      - "8765:8765"
+    env_file:
+      - .env
+    volumes:
+      - reports_data:/app/reports
+    environment:
+      - PORT=8765
+
+volumes:
+  reports_data:

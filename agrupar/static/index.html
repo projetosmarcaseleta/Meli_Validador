@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agrupar anúncios · Tubarão</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              ink: "#0b0c0f",
+              panel: "#14161c",
+              line: "#2a2e38",
+              acid: "#e8c547",
+            },
+            fontFamily: {
+              sans: ["IBM Plex Sans", "Segoe UI", "sans-serif"],
+              mono: ["IBM Plex Mono", "ui-monospace", "monospace"],
+            },
+          },
+        },
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body class="bg-ink text-zinc-200 font-sans min-h-screen">
+    <div class="grid min-h-screen lg:grid-cols-[minmax(320px,420px)_1fr]">
+      <aside class="border-b lg:border-b-0 lg:border-r border-line bg-panel flex flex-col">
+        <header class="px-6 pt-6 pb-4 border-b border-line">
+          <p class="text-acid font-mono text-xs tracking-[0.18em] uppercase">MLB23332 · Mercado Livre</p>
+          <h1 class="text-2xl font-semibold text-white mt-1">Agrupar anúncios</h1>
+          <p class="text-sm text-zinc-400 mt-2">
+            Cole MLBs e/ou SKUs e o token. SKU busca o MLB no Anymarket e segue o fluxo. Use Validar para ver o que já agrupa (somente GET).
+          </p>
+        </header>
+
+        <form id="form-executar" class="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          <div>
+            <label for="token" class="block text-xs font-medium uppercase tracking-wide text-zinc-400 mb-1">
+              Access token
+            </label>
+            <div class="relative">
+              <input
+                id="token"
+                name="token"
+                type="password"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="APP_USR-…"
+                class="w-full rounded-md bg-ink border border-line px-3 py-2 pr-24 font-mono text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-acid"
+              />
+              <button
+                type="button"
+                id="btn-ver-token"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-zinc-400 hover:text-acid"
+                aria-label="Mostrar ou ocultar token"
+              >
+                mostrar
+              </button>
+            </div>
+            <label class="mt-2 flex items-center gap-2 text-xs text-zinc-500">
+              <input id="lembrar-token" type="checkbox" class="accent-acid" />
+              Lembrar nesta sessão do navegador
+            </label>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label for="mlbs" class="text-xs font-medium uppercase tracking-wide text-zinc-400">
+                MLBs ou SKUs
+              </label>
+              <span id="contador-mlbs" class="font-mono text-xs text-acid">0</span>
+            </div>
+            <textarea
+              id="mlbs"
+              name="mlbs"
+              rows="10"
+              spellcheck="false"
+              placeholder="MLB5152455691&#10;49566&#10;49567"
+              class="w-full rounded-md bg-ink border border-line px-3 py-2 font-mono text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-acid resize-y min-h-[180px]"
+              aria-label="Lista de MLBs ou SKUs, um por linha"
+            ></textarea>
+            <p class="mt-1 text-[11px] text-zinc-500">
+              MLB consulta o Mercado Livre. SKU resolve o anúncio no banco e continua o fluxo.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label for="genero" class="block text-xs font-medium uppercase tracking-wide text-zinc-400 mb-1">
+                Gênero
+              </label>
+              <select
+                id="genero"
+                class="w-full rounded-md bg-ink border border-line px-3 py-2 text-sm text-white focus:outline-none focus:border-acid"
+                title="No validador vira cenário hipotético: e se o GENDER fosse este?"
+              >
+                <option value="">Automático</option>
+                <option value="Masculino">Masculino</option>
+                <option value="Feminino">Feminino</option>
+                <option value="Unissex">Unissex</option>
+              </select>
+            </div>
+            <div>
+              <label for="revalidacao" class="block text-xs font-medium uppercase tracking-wide text-zinc-400 mb-1">
+                Revalidação (s)
+              </label>
+              <input
+                id="revalidacao"
+                type="number"
+                min="0"
+                max="300"
+                value="45"
+                class="w-full rounded-md bg-ink border border-line px-3 py-2 font-mono text-sm text-white focus:outline-none focus:border-acid"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label for="family-name" class="block text-xs font-medium uppercase tracking-wide text-zinc-400 mb-1">
+              Family name forçado (opcional)
+            </label>
+            <input
+              id="family-name"
+              type="text"
+              placeholder="Deixe vazio para o nome majoritário"
+              class="w-full rounded-md bg-ink border border-line px-3 py-2 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:border-acid"
+            />
+          </div>
+
+          <fieldset class="space-y-2 text-sm">
+            <label class="flex items-center gap-2">
+              <input id="expandir-irmaos" type="checkbox" checked class="accent-acid" />
+              Incluir irmãos da mesma família/UP
+            </label>
+            <label class="flex items-center gap-2">
+              <input id="tentar-vendas" type="checkbox" class="accent-acid" />
+              Tentar family_name mesmo com venda
+            </label>
+          </fieldset>
+
+          <div class="flex flex-col gap-2 pt-2 sticky bottom-0 bg-panel pb-2">
+            <button
+              type="button"
+              id="btn-validar"
+              class="w-full rounded-md border border-acid text-acid font-semibold py-2.5 text-sm hover:bg-yellow-950/40 disabled:opacity-40"
+            >
+              Validar agrupamento
+            </button>
+            <div class="flex gap-2">
+              <button
+                type="submit"
+                id="btn-simular"
+                class="flex-1 rounded-md bg-acid text-ink font-semibold py-2.5 text-sm hover:bg-yellow-300 disabled:opacity-40"
+              >
+                Simular
+              </button>
+              <button
+                type="button"
+                id="btn-aplicar"
+                class="flex-1 rounded-md border border-red-500/60 text-red-300 py-2.5 text-sm hover:bg-red-950/40 disabled:opacity-40"
+              >
+                Aplicar PUTs
+              </button>
+            </div>
+            <p class="text-[11px] text-zinc-500">
+              Validar só lê a API. Gênero e family name forçados entram como cenário (“e se mudasse?”).
+            </p>
+          </div>
+        </form>
+      </aside>
+
+      <main class="flex flex-col min-h-[50vh] lg:min-h-screen min-h-0">
+        <div class="flex items-center justify-between px-6 py-3 border-b border-line gap-3">
+          <div class="flex items-center gap-1" role="tablist" aria-label="Painel direito">
+            <button
+              type="button"
+              id="tab-logs"
+              role="tab"
+              aria-selected="true"
+              aria-controls="painel-logs"
+              class="tab-btn rounded-md px-3 py-1.5 text-sm font-medium bg-ink text-acid border border-line"
+            >
+              Logs
+            </button>
+            <button
+              type="button"
+              id="tab-validador"
+              role="tab"
+              aria-selected="false"
+              aria-controls="painel-validador"
+              class="tab-btn rounded-md px-3 py-1.5 text-sm font-medium text-zinc-400 hover:text-white"
+            >
+              Validador
+            </button>
+            <button
+              type="button"
+              id="tab-relatorio"
+              role="tab"
+              aria-selected="false"
+              aria-controls="painel-relatorio"
+              class="tab-btn rounded-md px-3 py-1.5 text-sm font-medium text-zinc-400 hover:text-white"
+            >
+              Relatório
+            </button>
+          </div>
+          <div class="flex items-center gap-3">
+            <p id="status-execucao" class="text-xs text-zinc-500 font-mono">parado</p>
+            <button type="button" id="btn-limpar" class="text-xs text-zinc-400 hover:text-white">
+              Limpar logs
+            </button>
+          </div>
+        </div>
+
+        <div id="painel-logs" role="tabpanel" class="flex-1 overflow-y-auto font-mono text-[13px] leading-6 bg-[#08090c]">
+          <div id="console-logs" role="log" aria-live="polite" class="px-4 py-3 min-h-full"></div>
+        </div>
+
+        <div id="painel-validador" role="tabpanel" class="hidden flex-1 overflow-y-auto bg-ink px-6 py-5 space-y-6">
+          <p id="validador-vazio" class="text-sm text-zinc-500">
+            O resultado do Validar aparece aqui. Nenhum PUT é enviado.
+          </p>
+          <div id="validador-conteudo" class="hidden space-y-6">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-acid font-mono text-xs uppercase tracking-[0.18em]">Somente GET</p>
+                <h2 id="validador-status" class="text-xl font-semibold text-white mt-1"></h2>
+                <p id="validador-resumo" class="text-sm text-zinc-300 mt-2"></p>
+              </div>
+              <div class="flex flex-wrap gap-2">
+                <button type="button" id="btn-pdf-validador" class="rounded-md border border-acid px-2.5 py-1 text-xs text-acid hover:bg-yellow-950/40 disabled:opacity-40">
+                  Exportar PDF
+                </button>
+                <button type="button" id="btn-markdown-validador" class="text-xs text-zinc-400 hover:text-acid disabled:opacity-40">
+                  Copiar Markdown
+                </button>
+                <button type="button" id="btn-copiar-validador" class="text-xs text-zinc-400 hover:text-acid">
+                  Copiar texto
+                </button>
+              </div>
+            </div>
+            <div id="validador-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+            <div id="validador-avisos" class="hidden rounded-md border border-yellow-700/40 bg-yellow-950/20 px-3 py-2 text-sm text-yellow-200"></div>
+            <section>
+              <h3 class="text-sm font-semibold text-white mb-2">Oportunidades de agrupamento</h3>
+              <div id="validador-oportunidades" class="space-y-3"></div>
+            </section>
+            <section>
+              <h3 class="text-sm font-semibold text-white mb-2">Já na mesma família</h3>
+              <div id="validador-ja-agrupados" class="space-y-3"></div>
+            </section>
+            <section>
+              <h3 class="text-sm font-semibold text-white mb-2">Famílias atuais</h3>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                  <thead class="text-zinc-500 uppercase tracking-wide">
+                    <tr>
+                      <th class="py-1 pr-3">Qtd</th>
+                      <th class="py-1 pr-3">family_name</th>
+                      <th class="py-1 pr-3">family_id</th>
+                      <th class="py-1 pr-3">Vendas</th>
+                      <th class="py-1 pr-3">Gênero</th>
+                      <th class="py-1">LINE</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tabela-validador-familias"></tbody>
+                </table>
+              </div>
+            </section>
+            <section>
+              <h3 class="text-sm font-semibold text-white mb-2">Isolados no lote</h3>
+              <ul id="lista-isolados" class="text-sm text-zinc-300 space-y-1"></ul>
+            </section>
+            <section>
+              <h3 class="text-sm font-semibold text-white mb-2">Detalhe por MLB · raio-x PARENT_PK / CHILD_PK</h3>
+                    </tr>
+                  </thead>
+                  <tbody id="tabela-validador-mlbs"></tbody>
+                </table>
+              </div>
+            </section>
+            <section>
+              <h3 class="text-sm font-semibold text-white mb-2">Texto completo</h3>
+              <pre
+                id="validador-texto"
+                class="whitespace-pre-wrap break-all rounded-md border border-line bg-[#08090c] p-4 text-[12px] font-mono text-zinc-300 max-h-[420px] overflow-y-auto"
+              ></pre>
+            </section>
+          </div>
+        </div>
+
+        <div id="painel-relatorio" role="tabpanel" class="hidden flex-1 overflow-y-auto bg-ink px-6 py-5 space-y-6">
+          <p id="relatorio-vazio" class="text-sm text-zinc-500">
+            O relatório desta execução aparece aqui ao terminar o Simular ou o Aplicar.
+          </p>
+          <div id="relatorio-conteudo" class="hidden space-y-6">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p id="relatorio-modo" class="text-acid font-mono text-xs uppercase tracking-[0.18em]"></p>
+                <h2 id="relatorio-status" class="text-xl font-semibold text-white mt-1"></h2>
+                <p id="relatorio-resumo" class="text-sm text-zinc-300 mt-2"></p>
+              </div>
+              <div id="relatorio-downloads" class="flex flex-wrap gap-2"></div>
+            </div>
+            <div id="relatorio-stats" class="grid grid-cols-2 md:grid-cols-4 gap-3"></div>
+            <div id="relatorio-avisos" class="hidden rounded-md border border-yellow-700/40 bg-yellow-950/20 px-3 py-2 text-sm text-yellow-200"></div>
+            <section>
+              <h3 class="text-sm font-semibold text-white mb-2">Famílias</h3>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                  <thead class="text-zinc-500 uppercase tracking-wide">
+                    <tr>
+                      <th class="py-1 pr-3">Qtd</th>
+                      <th class="py-1 pr-3">family_name</th>
+                      <th class="py-1 pr-3">Vendas</th>
+                      <th class="py-1 pr-3">Gênero</th>
+                      <th class="py-1 pr-3">PUTs</th>
+                      <th class="py-1">Dá para juntar?</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tabela-familias"></tbody>
+                </table>
+              </div>
+            </section>
+            <section>
+              <h3 class="text-sm font-semibold text-white mb-2">Migrações de family_id</h3>
+              <ul id="lista-migracoes" class="text-sm font-mono text-zinc-300 space-y-1"></ul>
+            </section>
+            <section>
+              <h3 class="text-sm font-semibold text-white mb-2">PUTs com erro</h3>
+              <div class="overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                  <thead class="text-zinc-500 uppercase tracking-wide">
+                    <tr>
+                      <th class="py-1 pr-3">MLB</th>
+                      <th class="py-1 pr-3">Tipo</th>
+                      <th class="py-1 pr-3">HTTP</th>
+                      <th class="py-1">Mensagem da API</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tabela-puts-erro"></tbody>
+                </table>
+              </div>
+            </section>
+            <section>
+              <h3 class="text-sm font-semibold text-white mb-2">Detalhe por MLB</h3>
+              <div class="overflow-x-auto max-h-80">
+                <table class="w-full text-left text-xs">
+                  <thead class="text-zinc-500 uppercase tracking-wide sticky top-0 bg-ink">
+                    <tr>
+                      <th class="py-1 pr-3">MLB</th>
+                      <th class="py-1 pr-3">GENDER</th>
+                      <th class="py-1 pr-3">family_id</th>
+                      <th class="py-1 pr-3">family_name</th>
+                      <th class="py-1">PUTs</th>
+                    </tr>
+                  </thead>
+                  <tbody id="tabela-mlbs"></tbody>
+                </table>
+              </div>
+            </section>
+            <section>
+              <div class="flex items-center justify-between mb-2">
+                <h3 class="text-sm font-semibold text-white">Relatório completo</h3>
+                <button type="button" id="btn-copiar-relatorio" class="text-xs text-zinc-400 hover:text-acid">
+                  Copiar texto
+                </button>
+              </div>
+              <pre
+                id="relatorio-texto"
+                class="whitespace-pre-wrap break-all rounded-md border border-line bg-[#08090c] p-4 text-[12px] font-mono text-zinc-300 max-h-[480px] overflow-y-auto"
+              ></pre>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+    <script src="/static/app.js?v=20260901-3"></script>
+  </body>
+</html>

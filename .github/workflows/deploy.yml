@@ -1,0 +1,46 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 🚀 Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          script: |
+            set -e
+
+            APP_DIR="/var/www/Meli_Validador"
+            
+            echo "📦 Atualizando repositório..."
+            if [ ! -d "$APP_DIR" ]; then
+              git clone https://github.com/projetosmarcaseleta/Meli_Validador.git "$APP_DIR"
+            fi
+            
+            cd "$APP_DIR"
+            git fetch origin main
+            git reset --hard origin/main
+            
+            echo "🐍 Configurando ambiente virtual..."
+            if [ ! -d "venv" ]; then
+              python3 -m venv venv
+            fi
+            source venv/bin/activate
+            
+            echo "📥 Instalando dependências..."
+            pip install -r requirements.txt --quiet
+            pip install -e . --quiet
+            
+            echo "🔄 Reiniciando serviço..."
+            sudo systemctl restart meli-validador
+            
+            echo "✅ Deploy do Meli Validador concluído com sucesso!"

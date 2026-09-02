@@ -1,0 +1,45 @@
+# Python & Ambientes Virtuais
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+ENV/
+
+# Variáveis de ambiente & Segredos
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# Dados temporários, relatórios e saídas
+reports/
+data/*.txt
+!data/.gitkeep
+*.pdf
+*.json
+*.xlsx
+*.csv
+!tests/fixtures/*.csv
+
+# IDEs & Editores
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Sistema Operacional
+.DS_Store
+Thumbs.db
+
+# Testes e Cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+logs/
