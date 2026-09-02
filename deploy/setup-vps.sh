@@ -1,8 +1,7 @@
 #!/bin/bash
 # ============================================================
-# setup-vps.sh - Setup do Meli Validador na VPS
-# Executar na VPS como root ou com sudo:
-# bash setup-vps.sh
+# setup-vps.sh - Instalação e inicialização do Meli Validador na VPS
+# Uso: bash setup-vps.sh
 # ============================================================
 
 set -e
@@ -42,7 +41,7 @@ if [ ! -d "venv" ]; then
 fi
 source venv/bin/activate
 pip install --upgrade pip --quiet
-pip install -r ml_exporter/requirements.txt --quiet
+pip install -r requirements.txt --quiet
 
 # 4. Criar .env se não existir
 if [ ! -f "$APP_DIR/.env" ]; then
@@ -54,8 +53,8 @@ if [ ! -f "$APP_DIR/.env" ]; then
         cat > "$APP_DIR/.env" << 'EOF'
 PORT=3002
 FLASK_DEBUG=0
-SECRET_KEY=sua_chave_secreta_aqui
-PUBLIC_EXPORT_URL=https://validador.marcaseleta.shop/export
+SECRET_KEY=chave_secreta_validador
+PUBLIC_URL=https://validador.marcaseleta.shop
 GUMGA_TOKEN=
 ANYMARKET_PLATFORM=SELETA
 EOF
@@ -82,7 +81,7 @@ fi
 
 echo ""
 echo "============================================"
-echo "  ✅ Setup do Meli Validador concluído!"
+echo "  ✅ Meli Validador instalado e rodando!"
 echo "============================================"
 echo ""
 echo "  📍 Status: systemctl status meli-validador"

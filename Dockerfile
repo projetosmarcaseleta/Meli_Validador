@@ -7,12 +7,10 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends curl \
  && rm -rf /var/lib/apt/lists/*
 
-COPY ml_exporter/requirements.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY ml_exporter/ ./ml_exporter/
-
-WORKDIR /app/ml_exporter
+COPY . ./
 
 EXPOSE 3002
 

@@ -15,7 +15,7 @@ git fetch origin main
 git reset --hard origin/main
 
 source venv/bin/activate
-pip install -r ml_exporter/requirements.txt --quiet
+pip install -r requirements.txt --quiet
 
 sudo systemctl restart meli-validador
 

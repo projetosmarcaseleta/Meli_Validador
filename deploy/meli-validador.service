@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/var/www/Meli_Validador/ml_exporter
+WorkingDirectory=/var/www/Meli_Validador
 Environment="PATH=/var/www/Meli_Validador/venv/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=-/var/www/Meli_Validador/.env
 ExecStart=/var/www/Meli_Validador/venv/bin/gunicorn --bind 0.0.0.0:3002 --workers 2 --timeout 120 app:app
