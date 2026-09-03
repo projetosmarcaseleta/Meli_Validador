@@ -34,7 +34,7 @@ except ImportError:
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "relatorios-meli-dev")
-PUBLIC_EXPORT_URL = os.environ.get("PUBLIC_EXPORT_URL", "https://app.marcaseleta.shop/export")
+PUBLIC_EXPORT_URL = os.environ.get("PUBLIC_EXPORT_URL", "https://app.marcaseleta.shop/auditarcatalogo")
 
 
 def _write_excel(rows: list) -> io.BytesIO:
@@ -125,8 +125,8 @@ def _write_excel(rows: list) -> io.BytesIO:
 
 
 @app.route("/")
-@app.route("/export")
-@app.route("/export/")
+@app.route("/auditarcatalogo")
+@app.route("/auditarcatalogo/")
 def export_index():
     return render_template(
         "index.html",
@@ -136,7 +136,7 @@ def export_index():
 
 
 @app.route("/api/validate_token", methods=["POST"])
-@app.route("/export/api/validate_token", methods=["POST"])
+@app.route("/auditarcatalogo/api/validate_token", methods=["POST"])
 def api_validate_token():
     data = request.json or {}
     token = (data.get("token") or "").strip()
@@ -150,7 +150,7 @@ def api_validate_token():
 
 
 @app.route("/api/validate_gumga", methods=["POST"])
-@app.route("/export/api/validate_gumga", methods=["POST"])
+@app.route("/auditarcatalogo/api/validate_gumga", methods=["POST"])
 def api_validate_gumga():
     data = request.json or {}
     gumga = (data.get("gumga_token") or data.get("token") or "").strip()
@@ -161,7 +161,7 @@ def api_validate_gumga():
 
 
 @app.route("/api/import_spreadsheet", methods=["POST"])
-@app.route("/export/api/import_spreadsheet", methods=["POST"])
+@app.route("/auditarcatalogo/api/import_spreadsheet", methods=["POST"])
 def api_import_spreadsheet():
     upload = request.files.get("file")
     if not upload or not upload.filename:
@@ -189,7 +189,7 @@ def api_import_spreadsheet():
 
 
 @app.route("/api/export", methods=["POST"])
-@app.route("/export/api/export", methods=["POST"])
+@app.route("/auditarcatalogo/api/export", methods=["POST"])
 def api_export():
     data = request.json or {}
     token = (data.get("token") or "").strip()
@@ -335,7 +335,7 @@ def api_export():
 
 
 @app.route("/api/audit", methods=["POST"])
-@app.route("/export/api/audit", methods=["POST"])
+@app.route("/auditarcatalogo/api/audit", methods=["POST"])
 def api_audit():
     data = request.json or {}
     token = (data.get("token") or "").strip()
@@ -426,7 +426,7 @@ def api_audit():
 
 
 @app.route("/api/sync_google_sheet", methods=["POST"])
-@app.route("/export/api/sync_google_sheet", methods=["POST"])
+@app.route("/auditarcatalogo/api/sync_google_sheet", methods=["POST"])
 def sync_google_sheet():
     """
     Atualiza o status na planilha do Google (Coluna G = 'Correto')
@@ -516,7 +516,7 @@ def _fail_closed_status(detail: str) -> int:
 
 
 @app.route("/api/validate-ads", methods=["POST"])
-@app.route("/export/api/validate-ads", methods=["POST"])
+@app.route("/auditarcatalogo/api/validate-ads", methods=["POST"])
 def api_validate_ads():
     if not AI_PREVALIDATION_ENABLED:
         return jsonify({
