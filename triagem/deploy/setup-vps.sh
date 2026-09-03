@@ -38,10 +38,10 @@ if [ ! -f "$APP_DIR/.env" ]; then
         echo "  Copiando credenciais do Meli_Validador..."
         cp "/var/www/Meli_Validador/.env" "$APP_DIR/.env"
         # Garante a porta 3005
-        sed -i 's/PORT=.*/PORT=3005/g' "$APP_DIR/.env"
+        sed -i 's/PORT=.*/PORT=3008/g' "$APP_DIR/.env"
     else
         cat > "$APP_DIR/.env" << 'EOF'
-PORT=3005
+PORT=3008
 FLASK_DEBUG=0
 SECRET_KEY=meli_triagem_secret_key_vps
 EOF
@@ -68,7 +68,7 @@ echo "============================================"
 echo "  ✅ Meli Triagem configurado com sucesso!"
 echo "============================================"
 echo ""
-echo "  📍 Local: http://127.0.0.1:3005"
+echo "  📍 Local: http://127.0.0.1:3008"
 echo "  📍 Subdomínio: http://triagem.marcaseleta.shop"
 echo ""
 echo "  🔒 Para ativar SSL (HTTPS) com certificado gratuito:"

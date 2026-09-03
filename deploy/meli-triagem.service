@@ -8,7 +8,7 @@ User=root
 WorkingDirectory=/var/www/Meli_Validador/triagem
 Environment="PATH=/var/www/Meli_Validador/venv/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=-/var/www/Meli_Validador/.env
-ExecStart=/var/www/Meli_Validador/venv/bin/gunicorn --bind 0.0.0.0:3005 --workers 2 --timeout 120 app:app
+ExecStart=/var/www/Meli_Validador/venv/bin/gunicorn --bind 0.0.0.0:3008 --workers 2 --timeout 120 app:app
 Restart=always
 RestartSec=5
 

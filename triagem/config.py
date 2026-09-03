@@ -15,7 +15,7 @@ try:
 except ImportError:
     pass
 
-PORT = int(os.environ.get("PORT", os.environ.get("MELI_TRIAGEM_PORT", "5005")))
+PORT = int(os.environ.get("PORT", os.environ.get("MELI_TRIAGEM_PORT", "3008")))
 API_BASE_URL = os.environ.get("ML_API_BASE_URL", "https://api.mercadolibre.com")
 PROXY = os.environ.get("HTTP_PROXY", None)
 HTTP_TIMEOUT = int(os.environ.get("HTTP_TIMEOUT", "30"))
