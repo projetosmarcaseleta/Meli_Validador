@@ -19,6 +19,7 @@ from compare import (
 )
 from config import (
     MAX_WORKERS,
+    ANYMARKET_SKU_WEBHOOK_URL,
     ANYMARKET_DB_HOST,
     ANYMARKET_DB_PORT,
     ANYMARKET_DB_NAME,
@@ -513,12 +514,42 @@ def process_mlbs_for_audit(
 
 def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
     """
-    Consulta o banco de leitura do AnyMarket para mapear cada SKU
-    aos seus anúncios no Mercado Livre (Catálogo e Tradicional).
+    Mapeia cada SKU aos seus anúncios no Mercado Livre (Catálogo e Tradicional).
+    Prioridade 1: Webhook do n8n (ANYMARKET_SKU_WEBHOOK_URL) - ideal para VPS sem acesso direto ao banco.
+    Prioridade 2: Conexão direta PostgreSQL (ANYMARKET_DB_HOST) - para ambiente com VPN.
     Retorna { sku: { 'cat': [(mlb, status)], 'trad': [(mlb, status)] } }
     """
     sku_map: dict[str, dict] = {s: {"cat": [], "trad": []} for s in skus}
-    if not skus or not ANYMARKET_DB_HOST or not ANYMARKET_DB_USER:
+    if not skus:
+        return sku_map
+
+    # 1. Tentar via Webhook n8n se configurado
+    if ANYMARKET_SKU_WEBHOOK_URL:
+        try:
+            import requests as req
+            resp = req.post(
+                ANYMARKET_SKU_WEBHOOK_URL,
+                json={"skus": skus},
+                timeout=30,
+            )
+            if resp.status_code == 200:
+                data = resp.json() or {}
+                incoming_map = data.get("sku_map") or {}
+                for s, val in incoming_map.items():
+                    s_clean = str(s).strip()
+                    if s_clean in sku_map:
+                        cat_list = [(str(m[0]).upper(), str(m[1])) for m in val.get("cat", []) if m and len(m) >= 2]
+                        trad_list = [(str(m[0]).upper(), str(m[1])) for m in val.get("trad", []) if m and len(m) >= 2]
+                        sku_map[s_clean]["cat"] = cat_list
+                        sku_map[s_clean]["trad"] = trad_list
+                return sku_map
+            else:
+                print(f"[N8N WEBHOOK ERRO] HTTP {resp.status_code}: {resp.text[:200]}")
+        except Exception as exc:
+            print(f"[N8N WEBHOOK ERRO] Falha na consulta via n8n: {exc}")
+
+    # 2. Tentar via Conexão Direta ao PostgreSQL
+    if not ANYMARKET_DB_HOST or not ANYMARKET_DB_USER:
         return sku_map
 
     try:

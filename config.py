@@ -1,5 +1,5 @@
 """
-config.py – Configurações do Relatorios Meli
+config.py – Configurações do Meli Validador
 """
 
 import os
@@ -27,7 +27,13 @@ ANYMARKET_API_BASE_URL = os.environ.get(
 ANYMARKET_PLATFORM = os.environ.get("ANYMARKET_PLATFORM", "SELETA")
 GUMGA_TOKEN = os.environ.get("GUMGA_TOKEN", os.environ.get("ANYMARKET_GUMGA_TOKEN", ""))
 
-# Database Read-Replica
+# Webhook n8n para consulta de SKUs (Prioritário para VPS sem acesso direto ao banco)
+ANYMARKET_SKU_WEBHOOK_URL = os.environ.get(
+    "ANYMARKET_SKU_WEBHOOK_URL",
+    os.environ.get("N8N_SKU_WEBHOOK_URL", "")
+).strip().strip("'\"")
+
+# Database Read-Replica (Fallback para ambiente local/VPN direta)
 ANYMARKET_DB_HOST = os.environ.get("ANYMARKET_DB_HOST", "").strip().strip("'\"")
 ANYMARKET_DB_PORT = int(os.environ.get("ANYMARKET_DB_PORT", "5432"))
 ANYMARKET_DB_NAME = os.environ.get("ANYMARKET_DB_NAME", "anymarket").strip().strip("'\"")

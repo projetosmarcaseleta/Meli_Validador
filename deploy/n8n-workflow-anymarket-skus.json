@@ -1,0 +1,134 @@
+{
+  "name": "Meli Validador - Consulta SKUs AnyMarket",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "consultar-skus-anymarket",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "webhook-trigger",
+      "name": "Webhook Receber SKUs"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $json.body || $json;\nlet skus = body.skus || [];\n\nif (typeof skus === 'string') {\n  skus = skus.split(/[\\n,;]+/).map(s => s.trim()).filter(Boolean);\n}\nif (!Array.isArray(skus)) {\n  skus = [skus];\n}\n\nskus = skus.map(s => String(s).trim()).filter(Boolean);\n\nif (skus.length === 0) {\n  return [{ json: { skus: [], skusJson: '[]' } }];\n}\n\nreturn [{\n  json: {\n    skus: skus,\n    skusJson: JSON.stringify(skus)\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "code-preparar",
+      "name": "Preparar SKUs"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT\n    sm.sku_in_marketplace AS sku,\n    sm.id_in_marketplace AS mlb,\n    sm.is_catalog,\n    sm.status_in_marketplace\nFROM anymarket_prd.sku_marketplace AS sm\nWHERE sm.market_place = 'MERCADO_LIVRE'\n  AND sm.id_in_marketplace IS NOT NULL\n  AND sm.sku_in_marketplace IN (\n    SELECT json_array_elements_text($1::json)\n  )\nORDER BY sm.sku_in_marketplace, sm.is_catalog DESC;",
+        "additionalFields": {
+          "queryParams": "={{ $json.skusJson }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        440,
+        0
+      ],
+      "id": "postgres-query",
+      "name": "Consultar Replica AnyMarket",
+      "credentials": {
+        "postgres": {
+          "id": "",
+          "name": "Postgres AnyMarket Read Replica"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputSkus = $('Preparar SKUs').first().json.skus || [];\nconst rows = $input.all().map(item => item.json);\n\nconst sku_map = {};\nfor (const s of inputSkus) {\n  sku_map[s] = { cat: [], trad: [] };\n}\n\nfor (const row of rows) {\n  if (!row || !row.sku) continue;\n  const sku = String(row.sku || '').trim();\n  const mlb = String(row.mlb || '').trim().toUpperCase();\n  const isCat = Number(row.is_catalog || 0);\n  const status = String(row.status_in_marketplace || 'active');\n\n  if (sku && mlb && mlb.startsWith('MLB')) {\n    if (!sku_map[sku]) {\n      sku_map[sku] = { cat: [], trad: [] };\n    }\n    if (isCat === 1) {\n      sku_map[sku].cat.push([mlb, status]);\n    }\n    else {\n      sku_map[sku].trad.push([mlb, status]);\n    }\n  }\n}\n\nreturn [{\n  json: {\n    success: true,\n    sku_map: sku_map,\n    count: Object.keys(sku_map).length\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        0
+      ],
+      "id": "code-formatar",
+      "name": "Formatar Catálogo vs Tradicional"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        880,
+        0
+      ],
+      "id": "respond-webhook",
+      "name": "Responder Webhook"
+    }
+  ],
+  "connections": {
+    "Webhook Receber SKUs": {
+      "main": [
+        [
+          {
+            "node": "Preparar SKUs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar SKUs": {
+      "main": [
+        [
+          {
+            "node": "Consultar Replica AnyMarket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Consultar Replica AnyMarket": {
+      "main": [
+        [
+          {
+            "node": "Formatar Catálogo vs Tradicional",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Catálogo vs Tradicional": {
+      "main": [
+        [
+          {
+            "node": "Responder Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
