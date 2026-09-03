@@ -289,6 +289,7 @@ def build_catalog_audit_item(sku: str, cat_item: dict | None, trad_item: dict | 
 
     if not has_cat and not has_trad:
         return {
+            "item_id": f"{sku}_na",
             "sku": sku,
             "title": f"SKU {sku} (Não encontrado)",
             "mlb": "N/A",
@@ -349,13 +350,17 @@ def build_catalog_audit_item(sku: str, cat_item: dict | None, trad_item: dict | 
 
     main_title = trad.get("title") or cat.get("title") or f"SKU {sku}"
     main_mlb = trad.get("mlb") or cat.get("mlb") or ""
+    cat_mlb = cat.get("mlb", "")
+    trad_mlb = trad.get("mlb", "")
+    item_id = f"{sku}_{cat_mlb}" if cat_mlb else (f"{sku}_{trad_mlb}" if trad_mlb else f"{sku}_na")
 
     return {
+        "item_id": item_id,
         "sku": sku,
         "title": main_title,
         "mlb": main_mlb,
-        "mlb_cat": cat.get("mlb", ""),
-        "mlb_trad": trad.get("mlb", ""),
+        "mlb_cat": cat_mlb,
+        "mlb_trad": trad_mlb,
         "status_geral": status_geral,
         "summary": summary,
         "divergences": divergences,

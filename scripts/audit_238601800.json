@@ -28,7 +28,7 @@
     "errors": 1
   },
   "errors": [
-    "[ANYMARKET DB] Réplica AnyMarket não configurada (ANYMARKET_DB_HOST/WEBHOOK ausente).",
+    "[ANYMARKET DB] connection to server at \"anymarket-production-cluster.cluster-ro-cdj7j791k4zu.us-east-1.rds.amazonaws.com\" (10.119.19.170), port 5432 failed: FATAL:  password authentication failed for user \"v-userpass-read-aud-Q1V3lpR1d",
     "SKU 238601800: nenhum anúncio vinculado (filtro: sku_in_marketplace / seller_sku ML)."
   ]
 }

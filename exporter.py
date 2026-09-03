@@ -910,32 +910,72 @@ def process_skus_for_catalog_audit(
                     return m
             return candidates[0][0]
 
-        cat_mlb = _pick_best(cats)
         trad_mlb = _pick_best(trads)
-
-        cat_prod = ml_fields_by_mlb.get(cat_mlb) if cat_mlb else None
         trad_prod = ml_fields_by_mlb.get(trad_mlb) if trad_mlb else None
 
-        audit_item = build_catalog_audit_item(lookup_sku, cat_prod, trad_prod)
-        if input_label != lookup_sku:
-            audit_item["input_mlb"] = input_label
-            audit_item["summary"] = f"Entrada MLB {input_label} → SKU {lookup_sku}. {audit_item.get('summary', '')}"
-        st = audit_item.get("status_geral")
-        if st == "OK":
-            count_ok += 1
-        elif st == "DIVERGENTE":
-            count_div += 1
-        elif st == "ATENCAO":
-            count_att += 1
-        else:
-            count_err += 1
+        # Se o input foi um MLB específico, parear com esse MLB
+        if _is_mlb(input_label):
+            if any(m == input_label for m, _ in cats):
+                cat_mlb = input_label
+                cat_prod = ml_fields_by_mlb.get(cat_mlb)
+            elif any(m == input_label for m, _ in trads):
+                trad_mlb = input_label
+                trad_prod = ml_fields_by_mlb.get(trad_mlb)
+                cat_mlb = _pick_best(cats)
+                cat_prod = ml_fields_by_mlb.get(cat_mlb) if cat_mlb else None
+            else:
+                cat_mlb = input_label
+                cat_prod = ml_fields_by_mlb.get(cat_mlb)
 
-        items.append(audit_item)
+            audit_item = build_catalog_audit_item(lookup_sku, cat_prod, trad_prod)
+            audit_item["input_mlb"] = input_label
+            if input_label != lookup_sku:
+                audit_item["summary"] = f"Entrada MLB {input_label} → SKU {lookup_sku}. {audit_item.get('summary', '')}"
+            st = audit_item.get("status_geral")
+            if st == "OK":
+                count_ok += 1
+            elif st == "DIVERGENTE":
+                count_div += 1
+            elif st == "ATENCAO":
+                count_att += 1
+            else:
+                count_err += 1
+            items.append(audit_item)
+        else:
+            # Input é SKU: se tiver múltiplos catálogos vinculados, gera um item para cada catálogo contra o tradicional
+            if cats:
+                for cat_entry in cats:
+                    cat_mlb = cat_entry[0]
+                    cat_prod = ml_fields_by_mlb.get(cat_mlb)
+                    audit_item = build_catalog_audit_item(lookup_sku, cat_prod, trad_prod)
+                    st = audit_item.get("status_geral")
+                    if st == "OK":
+                        count_ok += 1
+                    elif st == "DIVERGENTE":
+                        count_div += 1
+                    elif st == "ATENCAO":
+                        count_att += 1
+                    else:
+                        count_err += 1
+                    items.append(audit_item)
+            else:
+                # Sem catálogo, apenas tradicional
+                audit_item = build_catalog_audit_item(lookup_sku, None, trad_prod)
+                st = audit_item.get("status_geral")
+                if st == "OK":
+                    count_ok += 1
+                elif st == "DIVERGENTE":
+                    count_div += 1
+                elif st == "ATENCAO":
+                    count_att += 1
+                else:
+                    count_err += 1
+                items.append(audit_item)
 
     return {
         "items": items,
         "summary": {
-            "total": len(input_rows),
+            "total": len(items),
             "divergent": count_div,
             "ok": count_ok,
             "attention": count_att,
@@ -970,7 +1010,9 @@ def process_skus_for_catalog_excel(
     filtered = []
     for item in items:
         sku = item.get("sku", "")
-        dec = reviews.get(sku) or "PENDENTE"
+        item_id = item.get("item_id") or (f"{sku}_{item.get('mlb_cat')}" if item.get("mlb_cat") else sku)
+        mlb_cat = item.get("mlb_cat", "")
+        dec = reviews.get(item_id) or reviews.get(mlb_cat) or reviews.get(sku) or "PENDENTE"
         if filter_decision == "approved" and dec != "APROVADO":
             continue
         if filter_decision == "rejected" and dec != "REPROVADO":
@@ -1014,6 +1056,8 @@ def process_skus_for_catalog_excel(
     rows = [headers]
     for item in filtered:
         sku = item.get("sku", "")
+        item_id = item.get("item_id") or (f"{sku}_{item.get('mlb_cat')}" if item.get("mlb_cat") else sku)
+        mlb_cat = item.get("mlb_cat", "")
         cat = item.get("ml") or {}
         trad = item.get("any") or {}
 
@@ -1038,7 +1082,7 @@ def process_skus_for_catalog_excel(
         d_env = match_values(env_cat, env_trad) if (cat and trad) else "AUSENTE"
 
         diff_summary = " | ".join(item.get("divergences") or []) if item.get("divergences") else "OK"
-        dec = reviews.get(sku) or "PENDENTE"
+        dec = reviews.get(item_id) or reviews.get(mlb_cat) or reviews.get(sku) or "PENDENTE"
 
         row = [
             sku,

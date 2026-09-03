@@ -1828,34 +1828,43 @@
         return;
       }
 
-      auditDecisions = {};
-      aiReports = {};
-      auditItems.forEach(item => {
-        auditDecisions[item.sku] = 'PENDENTE';
-        aiReports[item.sku] = AI_PREVALIDATION_ENABLED
-          ? { ai_status: 'loading' }
-          : { ai_status: 'disabled', error: 'Pré-validação IA temporariamente desabilitada.' };
-      });
+  function getItemKey(item) {
+    if (!item) return '';
+    if (item.item_id) return item.item_id;
+    if (item.sku && item.mlb_cat) return `${item.sku}_${item.mlb_cat}`;
+    if (item.mlb_cat) return item.mlb_cat;
+    return item.sku || item.mlb || '';
+  }
 
-      currentFilter = 'all';
-      updateFilterButtons();
-      updateDecisionCounters();
-      applyFilterAndRender();
-
-      $('view-config').style.display = 'none';
-      $('view-audit').style.display = 'flex';
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-      if (AI_PREVALIDATION_ENABLED) runAiPrevalidation(auditItems);
-
-    } catch (err) {
-      clearInterval(progressTimer);
-      hideProg();
-      $('btn-audit').disabled = false;
-      $('btn-export').disabled = false;
-      resultEl.className = 'token-status err';
-      resultEl.textContent = 'Erro de conexão com o servidor.';
-    }
+  auditDecisions = {};
+  aiReports = {};
+  auditItems.forEach(item => {
+    const k = getItemKey(item);
+    auditDecisions[k] = 'PENDENTE';
+    aiReports[k] = AI_PREVALIDATION_ENABLED
+      ? { ai_status: 'loading' }
+      : { ai_status: 'disabled', error: 'Pré-validação IA temporariamente desabilitada.' };
   });
+
+  currentFilter = 'all';
+  updateFilterButtons();
+  updateDecisionCounters();
+  applyFilterAndRender();
+
+  $('view-config').style.display = 'none';
+  $('view-audit').style.display = 'flex';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (AI_PREVALIDATION_ENABLED) runAiPrevalidation(auditItems);
+
+} catch (err) {
+  clearInterval(progressTimer);
+  hideProg();
+  $('btn-audit').disabled = false;
+  $('btn-export').disabled = false;
+  resultEl.className = 'token-status err';
+  resultEl.textContent = 'Erro de conexão com o servidor.';
+}
+});
 
   // ── TOAST NOTIFICATIONS ──
   function showToast(message, type = 'info') {
@@ -1898,7 +1907,7 @@
     const webhookUrl = localStorage.getItem('google_sheet_webhook_url') || '';
     const statusEl = $('sheet-sync-status');
     const syncAllBtn = $('btn-sync-all-sheet');
-    const approvedCount = auditItems.filter(i => auditDecisions[i.sku] === 'APROVADO').length;
+    const approvedCount = auditItems.filter(i => auditDecisions[getItemKey(i)] === 'APROVADO').length;
 
     if (webhookUrl) {
       if (statusEl) {
@@ -1957,7 +1966,7 @@
       return;
     }
 
-    const approvedItems = auditItems.filter(i => auditDecisions[i.sku] === 'APROVADO' && (i.mlb_cat || i.mlb));
+    const approvedItems = auditItems.filter(i => auditDecisions[getItemKey(i)] === 'APROVADO' && (i.mlb_cat || i.mlb));
     if (!approvedItems.length) {
       return alert('Nenhum anúncio aprovado para sincronizar.');
     }
@@ -1994,7 +2003,7 @@
   function updateDecisionCounters() {
     let approved = 0, rejected = 0, pending = 0;
     auditItems.forEach(item => {
-      const dec = auditDecisions[item.sku] || 'PENDENTE';
+      const dec = auditDecisions[getItemKey(item)] || 'PENDENTE';
       if (dec === 'APROVADO') approved++;
       else if (dec === 'REPROVADO') rejected++;
       else pending++;
@@ -2018,7 +2027,7 @@
     const currentItem = filteredItems[currentIndex];
     if (!currentItem) return;
 
-    auditDecisions[currentItem.sku] = decision;
+    auditDecisions[getItemKey(currentItem)] = decision;
     updateDecisionCounters();
     updateDecisionButtonsUI(decision);
     renderSidebarList();
@@ -2035,7 +2044,7 @@
   }
 
   function confirmApproveIfNeeded(item) {
-    const ai = aiReports[item.sku];
+    const ai = aiReports[getItemKey(item)] || aiReports[item.sku];
     if (!ai || ai.ai_status === 'disabled') return true;
     if (ai.ai_status === 'loading') {
       return confirm('Pré-validação IA ainda não concluída. Aprovar mesmo assim e gravar na planilha?');
@@ -2214,7 +2223,7 @@
     const query = ($('input-search').value || '').trim().toLowerCase();
 
     filteredItems = auditItems.filter(item => {
-      const dec = auditDecisions[item.sku] || 'PENDENTE';
+      const dec = auditDecisions[getItemKey(item)] || 'PENDENTE';
 
       if (currentFilter === 'approved' && dec !== 'APROVADO') return false;
       if (currentFilter === 'rejected' && dec !== 'REPROVADO') return false;
@@ -2259,8 +2268,9 @@
 
       const thumbUrl = item.any?.image_main || item.ml?.image_main || (item.any?.images_list && item.any.images_list[0]) || '';
       const statusBadge = getItemStatusBadge(item);
-      const dec = auditDecisions[item.sku] || 'PENDENTE';
+      const dec = auditDecisions[getItemKey(item)] || 'PENDENTE';
       const decBadge = getDecisionBadge(dec);
+      const catListingType = item.ml?.listing_type ? ` [${item.ml.listing_type}]` : '';
 
       card.innerHTML = `
         <img class="item-thumb" src="${thumbUrl || 'data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'38\' height=\'38\' fill=\'%23222\'><rect width=\'38\' height=\'38\'/></svg>'}" onerror="this.style.opacity=.2" alt="" />
@@ -2273,7 +2283,7 @@
             </div>
           </div>
           <span class="item-title">${item.title || 'Sem título'}</span>
-          <span class="item-mlbs-preview">${item.mlb_cat ? 'Cat: ' + item.mlb_cat : ''} ${item.mlb_trad ? '| Trad: ' + item.mlb_trad : ''}</span>
+          <span class="item-mlbs-preview">${item.mlb_cat ? 'Cat' + catListingType + ': ' + item.mlb_cat : 'Sem Catálogo'} ${item.mlb_trad ? '| Trad: ' + item.mlb_trad : ''}</span>
         </div>
       `;
 
@@ -2335,7 +2345,7 @@
     $('btn-next').disabled = currentIndex === filteredItems.length - 1;
 
     // Decision state
-    const currentDec = auditDecisions[item.sku] || 'PENDENTE';
+    const currentDec = auditDecisions[getItemKey(item)] || 'PENDENTE';
     updateDecisionButtonsUI(currentDec);
 
     // Links ML
@@ -2423,7 +2433,7 @@
     const panel = $('ai-panel');
     if (!panel || !item) return;
     panel.hidden = false;
-    const ai = aiReports[item.sku] || { ai_status: 'loading' };
+    const ai = aiReports[getItemKey(item)] || aiReports[item.sku] || { ai_status: 'loading' };
     const recEl = $('ai-recommendation');
     const scoresEl = $('ai-scores');
     const badgesEl = $('ai-badges');
@@ -2498,14 +2508,14 @@
     });
   }
 
-  async function runAiPrevalidation(items, onlySku) {
+  async function runAiPrevalidation(items, onlyItemKey) {
     if (!AI_PREVALIDATION_ENABLED) return;
-    const targets = (items || []).filter(i => i && i.sku && (!onlySku || i.sku === onlySku));
+    const targets = (items || []).filter(i => i && i.sku && (!onlyItemKey || getItemKey(i) === onlyItemKey || i.sku === onlyItemKey));
     if (!targets.length) return;
 
     aiValidationRunning = true;
     targets.forEach(item => {
-      aiReports[item.sku] = { ai_status: 'loading', prompt_version: 'v1.0' };
+      aiReports[getItemKey(item)] = { ai_status: 'loading', prompt_version: 'v1.0' };
     });
     if (filteredItems[currentIndex]) renderAiPanel(filteredItems[currentIndex]);
 
@@ -2517,20 +2527,24 @@
       });
       const data = await res.json();
       const rows = data.results || (data.sku || data.report || data.ai_status ? [data] : []);
-      const bySku = {};
+      const byKey = {};
       rows.forEach(row => {
-        if (row && row.sku) bySku[row.sku] = row;
+        if (row) {
+          if (row.item_id) byKey[row.item_id] = row;
+          if (row.sku) byKey[row.sku] = row;
+        }
       });
       targets.forEach(item => {
-        const row = bySku[item.sku];
+        const k = getItemKey(item);
+        const row = byKey[item.item_id] || byKey[k] || byKey[item.sku];
         if (row && row.success && row.report) {
-          aiReports[item.sku] = {
+          aiReports[k] = {
             ai_status: 'ok',
             report: row.report,
             prompt_version: row.prompt_version || data.prompt_version || 'v1.0',
           };
         } else {
-          aiReports[item.sku] = {
+          aiReports[k] = {
             ai_status: 'error',
             error: (row && (row.error || row.detail)) || data.error || 'Falha na pré-validação por IA. Tente novamente ou prossiga com revisão manual.',
             prompt_version: (row && row.prompt_version) || data.prompt_version || 'v1.0',
@@ -2539,7 +2553,7 @@
       });
     } catch (err) {
       targets.forEach(item => {
-        aiReports[item.sku] = {
+        aiReports[getItemKey(item)] = {
           ai_status: 'error',
           error: 'Falha na pré-validação por IA. Tente novamente ou prossiga com revisão manual.',
         };
