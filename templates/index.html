@@ -1675,6 +1675,14 @@
   let currentFilter = 'all';
   let auditDecisions = {};
   let aiReports = {};
+
+  function getItemKey(item) {
+    if (!item) return '';
+    if (item.item_id) return item.item_id;
+    if (item.sku && item.mlb_cat) return `${item.sku}_${item.mlb_cat}`;
+    if (item.mlb_cat) return item.mlb_cat;
+    return item.sku || item.mlb || '';
+  }
   let aiValidationRunning = false;
   const AI_PREVALIDATION_ENABLED = false; // temporário — reativar quando OpenAI estiver otimizada
 
@@ -1827,14 +1835,6 @@
         resultEl.textContent = 'Nenhum SKU encontrado no Mercado Livre.';
         return;
       }
-
-  function getItemKey(item) {
-    if (!item) return '';
-    if (item.item_id) return item.item_id;
-    if (item.sku && item.mlb_cat) return `${item.sku}_${item.mlb_cat}`;
-    if (item.mlb_cat) return item.mlb_cat;
-    return item.sku || item.mlb || '';
-  }
 
   auditDecisions = {};
   aiReports = {};
