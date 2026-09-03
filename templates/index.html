@@ -507,6 +507,11 @@
       color: var(--text);
     }
 
+    .btn-icon-text:disabled {
+      opacity: .4;
+      cursor: not-allowed;
+    }
+
     /* Workspace: Split-View */
     .audit-workspace {
       width: 100%;
@@ -631,6 +636,7 @@
     }
 
     .badge.diff { background: var(--red-bg); color: var(--red); border: 1px solid rgba(251,113,133,.3); }
+    .badge.ok-blue { background: rgba(56,189,248,.18); color: #7DD3FC; border: 1px solid rgba(56,189,248,.4); font-weight: 700; }
     .badge.ok   { background: var(--green-bg); color: var(--green); border: 1px solid rgba(52,211,153,.3); }
     .badge.warn { background: var(--amber-bg); color: var(--amber); border: 1px solid rgba(251,191,36,.3); }
 
@@ -819,6 +825,12 @@
       color: #A7F3D0;
     }
 
+    .diag-box.title-ok {
+      background: rgba(56,189,248,.08);
+      border: 1px solid rgba(56,189,248,.28);
+      color: #BAE6FD;
+    }
+
     .diag-box.warn {
       background: rgba(251,191,36,.07);
       border: 1px solid rgba(251,191,36,.22);
@@ -846,6 +858,115 @@
       font-size: 11px;
       color: #FECDD3;
     }
+
+    .ai-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .ai-panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .ai-panel-title {
+      font-size: 12px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .ai-rec {
+      font-size: 10.5px;
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      padding: 3px 8px;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+    }
+
+    .ai-rec.ok { color: var(--green); background: var(--green-bg); border-color: rgba(52,211,153,.35); }
+    .ai-rec.warn { color: var(--amber); background: var(--amber-bg); border-color: rgba(251,191,36,.35); }
+    .ai-rec.bad { color: var(--red); background: var(--red-bg); border-color: rgba(251,113,133,.35); }
+    .ai-rec.info { color: var(--text-2); background: var(--surface-2); }
+
+    .ai-scores {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--text-2);
+    }
+
+    .ai-scores strong { color: var(--text); font-weight: 600; }
+
+    .ai-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .ai-badge {
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+      color: var(--text-2);
+      background: var(--surface-2);
+    }
+
+    .ai-badge.ok { color: var(--green); background: var(--green-bg); border-color: rgba(52,211,153,.3); }
+    .ai-badge.bad { color: var(--red); background: var(--red-bg); border-color: rgba(251,113,133,.3); }
+    .ai-badge.warn { color: var(--amber); background: var(--amber-bg); border-color: rgba(251,191,36,.3); }
+
+    .ai-summary {
+      font-size: 12px;
+      color: var(--text-2);
+      line-height: 1.45;
+    }
+
+    .ai-evidence {
+      margin: 0;
+      padding-left: 16px;
+      color: var(--text-2);
+      font-size: 11.5px;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    .ai-panel-actions {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .btn-ai-retry {
+      font-family: 'Inter', sans-serif;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 5px 10px;
+      border-radius: 6px;
+      border: 1px solid rgba(56,189,248,.35);
+      background: transparent;
+      color: var(--blue);
+      cursor: pointer;
+    }
+
+    .btn-ai-retry:hover { background: rgba(56,189,248,.1); }
+    .btn-ai-retry:disabled { opacity: .5; cursor: default; }
+
+    tr.row-ai-flag td { background: rgba(251,113,133,.06); }
 
     /* ── PHOTO COMPARISON ── */
     .audit-card {
@@ -1054,6 +1175,19 @@
       font-weight: 500;
     }
 
+    .diff-table tr.row-title-ok {
+      background: rgba(56,189,248,.07);
+    }
+
+    .diff-table tr.row-title-ok:hover {
+      background: rgba(56,189,248,.11);
+    }
+
+    .row-title-ok .cell-val {
+      color: #BAE6FD;
+      font-weight: 500;
+    }
+
     .cell-status {
       width: 90px;
       text-align: center;
@@ -1188,7 +1322,7 @@
             <span>Lista de SKUs</span>
             <span class="opt">um por linha ou vírgula</span>
           </label>
-          <textarea id="input-skus" placeholder="237274700&#10;237274701&#10;237274702"></textarea>
+          <textarea id="input-skus" placeholder="238601800&#10;MLB7520875292&#10;(SKU seller ou código MLB)"></textarea>
         </div>
       </div>
 
@@ -1364,6 +1498,24 @@
           </div>
         </div>
 
+        <!-- AI Pre-validation Report -->
+        <div id="ai-panel" class="ai-panel" hidden>
+          <div class="ai-panel-head">
+            <div class="ai-panel-title">
+              <span>Pré-validação IA</span>
+              <span id="ai-prompt-version" class="ai-badge">v—</span>
+            </div>
+            <span id="ai-recommendation" class="ai-rec info">Aguardando</span>
+          </div>
+          <div id="ai-scores" class="ai-scores"></div>
+          <div id="ai-badges" class="ai-badges"></div>
+          <div id="ai-summary" class="ai-summary"></div>
+          <ul id="ai-evidence" class="ai-evidence"></ul>
+          <div class="ai-panel-actions">
+            <button id="btn-ai-retry" class="btn-ai-retry" type="button">↻ Tentar novamente</button>
+          </div>
+        </div>
+
         <!-- Photo Comparison Card -->
         <div class="audit-card">
           <div class="audit-card-title">
@@ -1522,6 +1674,9 @@
   let currentIndex = 0;
   let currentFilter = 'all';
   let auditDecisions = {};
+  let aiReports = {};
+  let aiValidationRunning = false;
+  const AI_PREVALIDATION_ENABLED = false; // temporário — reativar quando OpenAI estiver otimizada
 
   function parseSKUs(raw) {
     return (raw || '')
@@ -1674,8 +1829,12 @@
       }
 
       auditDecisions = {};
+      aiReports = {};
       auditItems.forEach(item => {
         auditDecisions[item.sku] = 'PENDENTE';
+        aiReports[item.sku] = AI_PREVALIDATION_ENABLED
+          ? { ai_status: 'loading' }
+          : { ai_status: 'disabled', error: 'Pré-validação IA temporariamente desabilitada.' };
       });
 
       currentFilter = 'all';
@@ -1686,6 +1845,7 @@
       $('view-config').style.display = 'none';
       $('view-audit').style.display = 'flex';
       window.scrollTo({ top: 0, behavior: 'smooth' });
+      if (AI_PREVALIDATION_ENABLED) runAiPrevalidation(auditItems);
 
     } catch (err) {
       clearInterval(progressTimer);
@@ -1874,17 +2034,85 @@
     }
   }
 
+  function confirmApproveIfNeeded(item) {
+    const ai = aiReports[item.sku];
+    if (!ai || ai.ai_status === 'disabled') return true;
+    if (ai.ai_status === 'loading') {
+      return confirm('Pré-validação IA ainda não concluída. Aprovar mesmo assim e gravar na planilha?');
+    }
+    if (ai.ai_status === 'error') {
+      return confirm('IA indisponível. Aprovar mesmo assim e gravar na planilha?');
+    }
+    const flags = (ai.report && ai.report.mismatch_flags) || {};
+    const mismatches = [];
+    if (flags.titulo_mismatch) mismatches.push('TÍTULO');
+    if (flags.ean_mismatch) mismatches.push('EAN');
+    if (flags.cor_mismatch) mismatches.push('COR');
+    if (flags.voltagem_mismatch) mismatches.push('VOLTAGEM');
+    if (flags.visual_mismatch) mismatches.push('IMAGENS');
+    const rec = ai.report && ai.report.overall_recommendation;
+    if (rec === 'reject' || mismatches.length) {
+      const reason = mismatches.length ? mismatches.join(', ') : rec;
+      return confirm(`A IA recomenda NÃO aprovar (${reason}). Aprovar mesmo assim?`);
+    }
+    if (rec === 'needs_human_review') {
+      return confirm('A IA pediu revisão humana. Aprovar mesmo assim e gravar na planilha?');
+    }
+    return true;
+  }
+
+  function handleApprove(autoAdvance = true) {
+    if (!filteredItems.length) return;
+    const currentItem = filteredItems[currentIndex];
+    if (!currentItem) return;
+    if (!confirmApproveIfNeeded(currentItem)) return;
+    setDecision('APROVADO', autoAdvance);
+  }
+
   function updateDecisionButtonsUI(decision) {
     $('btn-dec-approve').classList.toggle('active', decision === 'APROVADO');
     $('btn-dec-reject').classList.toggle('active', decision === 'REPROVADO');
     $('btn-dec-pending').classList.toggle('active', decision === 'PENDENTE');
   }
 
-  $('btn-dec-approve').addEventListener('click', () => setDecision('APROVADO', true));
+  $('btn-dec-approve').addEventListener('click', () => handleApprove(true));
   $('btn-dec-reject').addEventListener('click', () => setDecision('REPROVADO', true));
   $('btn-dec-pending').addEventListener('click', () => setDecision('PENDENTE', false));
 
   // ── EXPORT EXCEL ──
+  const exportButtonIds = ['btn-export', 'btn-export-all-audit', 'btn-export-approved', 'btn-export-rejected'];
+
+  function setExportButtonsDisabled(isDisabled) {
+    exportButtonIds.forEach(id => {
+      const btn = $(id);
+      if (btn) btn.disabled = isDisabled;
+    });
+  }
+
+  function parseExportFilename(contentDisposition, fallback) {
+    if (!contentDisposition) return fallback;
+    const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;\s]+)/i);
+    if (utf8Match) {
+      try { return decodeURIComponent(utf8Match[1]); } catch { /* ignore */ }
+    }
+    const plainMatch = contentDisposition.match(/filename=(?:\"([^\"]+)\"|([^;\s]+))/i);
+    return (plainMatch && (plainMatch[1] || plainMatch[2])) || fallback;
+  }
+
+  function downloadBlob(blob, filename) {
+    const anchor = document.createElement('a');
+    const objectUrl = URL.createObjectURL(blob);
+    anchor.href = objectUrl;
+    anchor.download = filename;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => {
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(objectUrl);
+    }, 0);
+  }
+
   $('btn-export').addEventListener('click', () => triggerExcelExport('all'));
   $('btn-export-all-audit').addEventListener('click', () => triggerExcelExport('all'));
   $('btn-export-approved').addEventListener('click', () => triggerExcelExport('approved'));
@@ -1892,7 +2120,8 @@
 
   async function triggerExcelExport(filterDecision = 'all') {
     const token = $('input-token').value.trim();
-    const skus = auditItems.length
+    const hasAuditCache = auditItems.length > 0;
+    const skus = hasAuditCache
       ? auditItems.map(r => r.sku).filter(Boolean)
       : parseSKUs($('input-skus').value);
 
@@ -1902,37 +2131,50 @@
     let labelMsg = 'Gerando planilha Excel...';
     if (filterDecision === 'approved') labelMsg = 'Gerando planilha dos Aprovados...';
     if (filterDecision === 'rejected') labelMsg = 'Gerando planilha dos Reprovados...';
+    if (hasAuditCache) labelMsg += ' (dados da auditoria)';
 
+    setExportButtonsDisabled(true);
     showProg(20, labelMsg);
     try {
+      const payload = {
+        token,
+        skus,
+        mode: 'catalog',
+        reviews: auditDecisions,
+        filter_decision: filterDecision,
+      };
+      if (hasAuditCache) payload.audit_items = auditItems;
+
       const res = await fetch('{{ url_for("api_export") }}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          token,
-          skus,
-          mode: 'catalog',
-          reviews: auditDecisions,
-          filter_decision: filterDecision
-        })
+        body: JSON.stringify(payload)
       });
-      hideProg();
 
       if (!res.ok) {
+        hideProg();
         const err = await res.json().catch(() => ({}));
         alert(err.error || 'Erro ao gerar planilha.');
         return;
       }
 
       const blob = await res.blob();
-      const fname = res.headers.get('Content-Disposition')?.match(/filename="(.+)"/)?.[1] || 'Relatorio_ML_Catalogo_vs_Tradicional.xlsx';
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = fname;
-      a.click();
+      const fallbackName = filterDecision === 'approved'
+        ? 'Relatorio_ML_Aprovados.xlsx'
+        : filterDecision === 'rejected'
+          ? 'Relatorio_ML_Reprovados.xlsx'
+          : 'Relatorio_ML_Catalogo_vs_Tradicional.xlsx';
+      const fname = parseExportFilename(res.headers.get('Content-Disposition'), fallbackName);
+      downloadBlob(blob, fname);
+
+      const exportCount = res.headers.get('X-Export-Count') || skus.length;
+      showProg(100, `Planilha pronta (${exportCount} SKU(s)).`);
+      setTimeout(hideProg, 1200);
     } catch {
       hideProg();
       alert('Erro ao gerar planilha.');
+    } finally {
+      setExportButtonsDisabled(false);
     }
   }
 
@@ -2016,7 +2258,7 @@
       card.id = `sidebar-item-${idx}`;
 
       const thumbUrl = item.any?.image_main || item.ml?.image_main || (item.any?.images_list && item.any.images_list[0]) || '';
-      const statusBadge = getStatusBadge(item.status_geral);
+      const statusBadge = getItemStatusBadge(item);
       const dec = auditDecisions[item.sku] || 'PENDENTE';
       const decBadge = getDecisionBadge(dec);
 
@@ -2045,6 +2287,24 @@
     if (status === 'OK')         return '<span class="badge ok">OK</span>';
     if (status === 'ATENCAO')    return '<span class="badge warn">Alerta</span>';
     return '<span class="badge warn">Erro</span>';
+  }
+
+  const COMPARISON_SKIP_KEYS = new Set(['image_count', 'images', 'image_main']);
+
+  function isOnlyTitleDiff(item) {
+    const comparisons = item.comparison || [];
+    const hasTitleDiff = comparisons.some(c => c.key === 'title' && c.status === 'DIVERGENTE');
+    const hasOtherDiff = comparisons.some(c =>
+      c.status === 'DIVERGENTE' && c.key !== 'title' && !COMPARISON_SKIP_KEYS.has(c.key)
+    );
+    return hasTitleDiff && !hasOtherDiff;
+  }
+
+  function getItemStatusBadge(item) {
+    if (isOnlyTitleDiff(item)) {
+      return '<span class="badge ok-blue" title="Somente título diferente">OK</span>';
+    }
+    return getStatusBadge(item.status_geral);
   }
 
   function getDecisionBadge(dec) {
@@ -2120,12 +2380,18 @@
     const diagTitle = $('diag-title');
     const diagDesc = $('diag-desc');
 
+    const onlyTitleDiff = isOnlyTitleDiff(item);
+
     if (item.status_geral === 'DIVERGENTE') {
       diagBanner.className = 'diag-box diff';
       diagTitle.textContent = `Divergências Catálogo × Tradicional (${item.divergences?.length || 1}):`;
       
       const cleanDiffs = (item.divergences || []).map(d => `<span class="diag-chip">${escapeHtml(d)}</span>`);
       diagDesc.innerHTML = cleanDiffs.join('');
+    } else if (onlyTitleDiff) {
+      diagBanner.className = 'diag-box title-ok';
+      diagTitle.textContent = 'Somente título diferente';
+      diagDesc.innerHTML = '<span style="font-size:11.5px;">Demais campos estão iguais — diferença de título é indiferente para aprovação.</span>';
     } else if (item.status_geral === 'OK') {
       diagBanner.className = 'diag-box ok';
       diagTitle.textContent = '🟢 Catálogo e Tradicional 100% Iguais';
@@ -2138,6 +2404,153 @@
 
     renderPhotos(item);
     renderAttributesTable(item);
+    renderAiPanel(item);
+  }
+
+  function recLabel(rec) {
+    if (rec === 'approve_candidate') return { text: 'Candidato a aprovar', cls: 'ok' };
+    if (rec === 'reject') return { text: 'Reprovar', cls: 'bad' };
+    if (rec === 'needs_human_review') return { text: 'Revisão humana', cls: 'warn' };
+    return { text: 'Aguardando', cls: 'info' };
+  }
+
+  function aiBadge(label, mismatch, loading) {
+    if (loading) return `<span class="ai-badge warn">${label} …</span>`;
+    return `<span class="ai-badge ${mismatch ? 'bad' : 'ok'}">${label} ${mismatch ? '≠' : 'OK'}</span>`;
+  }
+
+  function renderAiPanel(item) {
+    const panel = $('ai-panel');
+    if (!panel || !item) return;
+    panel.hidden = false;
+    const ai = aiReports[item.sku] || { ai_status: 'loading' };
+    const recEl = $('ai-recommendation');
+    const scoresEl = $('ai-scores');
+    const badgesEl = $('ai-badges');
+    const summaryEl = $('ai-summary');
+    const evidenceEl = $('ai-evidence');
+    const versionEl = $('ai-prompt-version');
+    const retryBtn = $('btn-ai-retry');
+
+    versionEl.textContent = ai.prompt_version || 'v1.0';
+    evidenceEl.innerHTML = '';
+    retryBtn.disabled = aiValidationRunning && ai.ai_status === 'loading';
+
+    if (ai.ai_status === 'loading') {
+      recEl.className = 'ai-rec info';
+      recEl.textContent = 'Analisando…';
+      scoresEl.textContent = 'Comparando metadados e imagens com o modelo multimodal.';
+      badgesEl.innerHTML = ['TÍTULO', 'EAN', 'COR', 'VOLTAGEM', 'VISUAL'].map(l => `<span class="ai-badge warn">${l} …</span>`).join('');
+      summaryEl.textContent = 'Aguarde a pré-validação. Você ainda precisa Aprovar ou Reprovar manualmente.';
+      return;
+    }
+
+    if (ai.ai_status === 'disabled') {
+      recEl.className = 'ai-rec info';
+      recEl.textContent = 'IA desligada';
+      scoresEl.textContent = '';
+      badgesEl.innerHTML = '<span class="ai-badge info">Temporariamente off</span>';
+      summaryEl.textContent = ai.error || 'Pré-validação IA temporariamente desabilitada. Use a comparação manual abaixo.';
+      if (retryBtn) retryBtn.style.display = 'none';
+      return;
+    }
+
+    if (retryBtn) retryBtn.style.display = '';
+
+    if (ai.ai_status === 'error') {
+      recEl.className = 'ai-rec warn';
+      recEl.textContent = 'IA indisponível';
+      scoresEl.textContent = '';
+      badgesEl.innerHTML = '<span class="ai-badge warn">Falhou de forma segura</span>';
+      summaryEl.textContent = ai.error || 'Falha na pré-validação por IA. Tente novamente ou prossiga com revisão manual.';
+      return;
+    }
+
+    const report = ai.report || {};
+    const rec = recLabel(report.overall_recommendation);
+    recEl.className = `ai-rec ${rec.cls}`;
+    recEl.textContent = rec.text;
+    const scores = report.scores || {};
+    scoresEl.innerHTML = `
+      <span>Metadados <strong>${Math.round((scores.metadata_match_score || 0) * 100)}%</strong></span>
+      <span>Visual <strong>${Math.round((scores.visual_similarity_score || 0) * 100)}%</strong></span>
+      <span>Confiança <strong>${Math.round((scores.overall_confidence || 0) * 100)}%</strong></span>
+    `;
+    const flags = report.mismatch_flags || {};
+    const visualVerdict = (report.visual && report.visual.verdict) || 'uncertain';
+    const visualBadge = visualVerdict === 'uncertain'
+      ? '<span class="ai-badge warn">VISUAL ?</span>'
+      : aiBadge('VISUAL', flags.visual_mismatch);
+    badgesEl.innerHTML = [
+      aiBadge('TÍTULO', flags.titulo_mismatch),
+      aiBadge('EAN', flags.ean_mismatch),
+      aiBadge('COR', flags.cor_mismatch),
+      aiBadge('VOLTAGEM', flags.voltagem_mismatch),
+      visualBadge,
+    ].join('');
+    summaryEl.textContent = report.summary_pt || '';
+    const evidence = (report.visual && (report.visual.differences_pt || []).concat(report.visual.evidence_pt || [])) || [];
+    evidence.slice(0, 6).forEach(line => {
+      if (!line) return;
+      const li = document.createElement('li');
+      li.textContent = line;
+      evidenceEl.appendChild(li);
+    });
+  }
+
+  async function runAiPrevalidation(items, onlySku) {
+    if (!AI_PREVALIDATION_ENABLED) return;
+    const targets = (items || []).filter(i => i && i.sku && (!onlySku || i.sku === onlySku));
+    if (!targets.length) return;
+
+    aiValidationRunning = true;
+    targets.forEach(item => {
+      aiReports[item.sku] = { ai_status: 'loading', prompt_version: 'v1.0' };
+    });
+    if (filteredItems[currentIndex]) renderAiPanel(filteredItems[currentIndex]);
+
+    try {
+      const res = await fetch('{{ url_for("api_validate_ads") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ items: targets }),
+      });
+      const data = await res.json();
+      const rows = data.results || (data.sku || data.report || data.ai_status ? [data] : []);
+      const bySku = {};
+      rows.forEach(row => {
+        if (row && row.sku) bySku[row.sku] = row;
+      });
+      targets.forEach(item => {
+        const row = bySku[item.sku];
+        if (row && row.success && row.report) {
+          aiReports[item.sku] = {
+            ai_status: 'ok',
+            report: row.report,
+            prompt_version: row.prompt_version || data.prompt_version || 'v1.0',
+          };
+        } else {
+          aiReports[item.sku] = {
+            ai_status: 'error',
+            error: (row && (row.error || row.detail)) || data.error || 'Falha na pré-validação por IA. Tente novamente ou prossiga com revisão manual.',
+            prompt_version: (row && row.prompt_version) || data.prompt_version || 'v1.0',
+          };
+        }
+      });
+    } catch (err) {
+      targets.forEach(item => {
+        aiReports[item.sku] = {
+          ai_status: 'error',
+          error: 'Falha na pré-validação por IA. Tente novamente ou prossiga com revisão manual.',
+        };
+      });
+    } finally {
+      aiValidationRunning = false;
+      if (filteredItems[currentIndex]) {
+        renderAiPanel(filteredItems[currentIndex]);
+        renderAttributesTable(filteredItems[currentIndex]);
+      }
+    }
   }
 
   function renderPhotos(item) {
@@ -2224,15 +2637,30 @@
     tbody.appendChild(mlbTr);
 
     const comparisons = item.comparison || [];
+    const onlyTitleDiff = isOnlyTitleDiff(item);
+    const aiFlags = (aiReports[item.sku] && aiReports[item.sku].report && aiReports[item.sku].report.mismatch_flags) || {};
+    const aiKeyMap = {
+      title: 'titulo_mismatch',
+      ean: 'ean_mismatch',
+      color: 'cor_mismatch',
+      voltage: 'voltagem_mismatch',
+    };
     comparisons.forEach(c => {
       if (c.key === 'image_count' || c.key === 'images' || c.key === 'image_main') return;
 
-      const isDiff = c.status === 'DIVERGENTE';
+      const isTitleDiff = c.key === 'title' && c.status === 'DIVERGENTE';
+      const isDiff = c.status === 'DIVERGENTE' && !isTitleDiff;
       const tr = document.createElement('tr');
-      if (isDiff) tr.className = 'row-diff';
+      if (isTitleDiff && onlyTitleDiff) {
+        tr.className = 'row-title-ok';
+      } else if (isDiff || aiFlags[aiKeyMap[c.key]]) {
+        tr.className = isDiff ? 'row-diff' : 'row-ai-flag';
+      }
 
       let statusBadge = '<span class="badge ok">OK</span>';
-      if (c.status === 'DIVERGENTE') statusBadge = '<span class="badge diff">Diff</span>';
+      if (isTitleDiff && onlyTitleDiff) {
+        statusBadge = '<span class="badge ok-blue" title="Somente título diferente — indiferente para aprovação">OK</span>';
+      } else if (c.status === 'DIVERGENTE') statusBadge = '<span class="badge diff">Diff</span>';
       else if (c.status === 'AUSENTE_CAT') statusBadge = '<span class="badge warn">Aus. Cat</span>';
       else if (c.status === 'AUSENTE_TRAD') statusBadge = '<span class="badge warn">Aus. Trad</span>';
       else if (c.status === 'AMBOS_VAZIOS') statusBadge = '<span class="badge info">Vazio</span>';
@@ -2269,6 +2697,7 @@
     $('cat-thumbs').innerHTML = '';
     $('trad-thumbs').innerHTML = '';
     $('attributes-table-body').innerHTML = '';
+    if ($('ai-panel')) $('ai-panel').hidden = true;
   }
 
   // ── KEYBOARD SHORTCUTS ──
@@ -2280,7 +2709,7 @@
 
     if (key === 'A' || key === '1') {
       e.preventDefault();
-      setDecision('APROVADO', true);
+      handleApprove(true);
     } else if (key === 'R' || key === '2') {
       e.preventDefault();
       setDecision('REPROVADO', true);
@@ -2311,6 +2740,11 @@
   }
 
   $('lightbox-close').addEventListener('click', closeLightbox);
+  $('btn-ai-retry').addEventListener('click', () => {
+    const item = filteredItems[currentIndex];
+    if (!item) return;
+    runAiPrevalidation([item], item.sku);
+  });
   $('lightbox').addEventListener('click', (e) => {
     if (e.target === $('lightbox')) closeLightbox();
   });

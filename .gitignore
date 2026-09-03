@@ -1,42 +1,14 @@
-# Python & Ambientes Virtuais
+# Python
 __pycache__/
 *.py[cod]
-*$py.class
 *.egg-info/
-.venv/
 venv/
-env/
-ENV/
-
-# Variáveis de ambiente & Segredos
 .env
-.env.local
-.env.*.local
-*.pem
-*.key
 
-# Planilhas e Relatórios gerados
-*.xlsx
-*.xls
-*.csv
-reports/
-data/
-
-# IDEs & Editores
+# IDE
 .vscode/
 .idea/
-*.swp
-*.swo
 
-# Sistema Operacional
+# OS
 .DS_Store
 Thumbs.db
-
-# Testes e Cache
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Logs
-*.log
-logs/

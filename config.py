@@ -1,5 +1,5 @@
 """
-config.py – Configurações do Meli Validador
+config.py – Configurações do Relatorios Meli
 """
 
 import os
@@ -41,3 +41,16 @@ ANYMARKET_DB_USER = os.environ.get("ANYMARKET_DB_USER", "").strip().strip("'\"")
 ANYMARKET_DB_PASSWORD = os.environ.get("ANYMARKET_DB_PASSWORD", "").strip().strip("'\"")
 ANYMARKET_DB_SSLMODE = os.environ.get("ANYMARKET_DB_SSLMODE", "require").strip().strip("'\"")
 ANYMARKET_OI = os.environ.get("ANYMARKET_OI", "").strip().strip("'\"")
+
+# Webhook Google Sheets / Apps Script
+GOOGLE_SHEET_WEBHOOK_URL = os.environ.get("GOOGLE_SHEET_WEBHOOK_URL", "").strip().strip("'\"")
+
+# OpenAI Vision (pré-validação Catálogo × Tradicional)
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "").strip()
+OPENAI_API_BASE = os.environ.get("OPENAI_API_BASE", "https://api.openai.com/v1").rstrip("/")
+OPENAI_VISION_MODEL = os.environ.get("OPENAI_VISION_MODEL", "gpt-4o").strip() or "gpt-4o"
+OPENAI_TIMEOUT_SECONDS = int(os.environ.get("OPENAI_TIMEOUT_SECONDS", "60"))
+OPENAI_MAX_IMAGES_PER_SIDE = int(os.environ.get("OPENAI_MAX_IMAGES_PER_SIDE", "3"))
+
+# Pré-validação IA (desligada por padrão — ligar com AI_PREVALIDATION_ENABLED=1)
+AI_PREVALIDATION_ENABLED = os.environ.get("AI_PREVALIDATION_ENABLED", "0").strip().lower() in ("1", "true", "yes")

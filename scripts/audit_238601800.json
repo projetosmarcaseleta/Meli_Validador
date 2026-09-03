@@ -1,0 +1,34 @@
+{
+  "items": [
+    {
+      "sku": "238601800",
+      "title": "SKU 238601800 (Não encontrado)",
+      "mlb": "N/A",
+      "mlb_cat": "",
+      "mlb_trad": "",
+      "status_geral": "ERRO",
+      "summary": "Nenhum anúncio encontrado para este SKU no Mercado Livre",
+      "divergences": [
+        "Anúncio não encontrado no ML"
+      ],
+      "ml": {
+        "images_list": []
+      },
+      "any": {
+        "images_list": []
+      },
+      "comparison": []
+    }
+  ],
+  "summary": {
+    "total": 1,
+    "divergent": 0,
+    "ok": 0,
+    "attention": 0,
+    "errors": 1
+  },
+  "errors": [
+    "[ANYMARKET DB] Réplica AnyMarket não configurada (ANYMARKET_DB_HOST/WEBHOOK ausente).",
+    "SKU 238601800: nenhum anúncio vinculado (filtro: sku_in_marketplace / seller_sku ML)."
+  ]
+}

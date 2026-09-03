@@ -267,11 +267,6 @@ def build_audit_item(
 
 
 CATALOG_COMPARE_FIELDS: list[tuple[str, str]] = [
-    ("status", "STATUS"),
-    ("price", "PREÇO"),
-    ("listing_type", "TIPO ANÚNCIO"),
-    ("shipping_type", "TIPO DE ENVIO"),
-    ("stock", "ESTOQUE"),
     ("title", "TÍTULO"),
     ("brand", "MARCA"),
     ("model", "MODELO"),
@@ -279,8 +274,6 @@ CATALOG_COMPARE_FIELDS: list[tuple[str, str]] = [
     ("size", "TAMANHO"),
     ("voltage", "VOLTAGEM"),
     ("ean", "EAN / GTIN"),
-    ("sold_quantity", "VENDAS"),
-    ("description", "DESCRIÇÃO"),
     ("image_count", "QTD FOTOS"),
 ]
 
@@ -319,7 +312,7 @@ def build_catalog_audit_item(sku: str, cat_item: dict | None, trad_item: dict | 
         trad_val = str(trad.get(key, "") or "")
         status = match_values(cat_val, trad_val) if (has_cat and has_trad) else ("AUSENTE_CAT" if not has_cat else "AUSENTE_TRAD")
 
-        if has_cat and has_trad and status not in ("OK", "AMBOS_VAZIOS"):
+        if has_cat and has_trad and status not in ("OK", "AMBOS_VAZIOS") and key != "title":
             if key == "image_count":
                 diff = f"Qtd Fotos: Catálogo ({cat_val}) ≠ Tradicional ({trad_val})"
             elif key == "price":

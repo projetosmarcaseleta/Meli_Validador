@@ -1,6 +1,7 @@
 #!/bin/bash
 # ============================================================
-# setup-vps.sh - Instalação e inicialização do Meli Validador na VPS
+# setup-vps.sh - Script de configuração inicial do Meli Validador na VPS
+# Execute este script UMA VEZ na VPS para configurar tudo
 # Uso: bash setup-vps.sh
 # ============================================================
 
@@ -13,79 +14,65 @@ echo "============================================"
 echo "  🚀 Setup Meli Validador na VPS"
 echo "============================================"
 
-# 1. Dependências do sistema
+# 1. Instalar dependências do sistema
 echo ""
-echo "📦 1. Instalando pacotes do sistema..."
+echo "📦 Instalando dependências do sistema..."
 apt-get update -qq
-apt-get install -y python3 python3-venv python3-pip git libpq-dev curl nginx -qq
+apt-get install -y python3 python3-venv python3-pip git -qq
 
-# 2. Clonar ou atualizar
+# 2. Clonar o repositório
 echo ""
-echo "📥 2. Baixando repositório..."
+echo "📥 Clonando repositório..."
 if [ -d "$APP_DIR" ]; then
     echo "  Diretório já existe, atualizando..."
     cd "$APP_DIR"
     git fetch origin main
     git reset --hard origin/main
 else
-    mkdir -p /var/www
     git clone "$REPO_URL" "$APP_DIR"
     cd "$APP_DIR"
 fi
 
-# 3. Ambiente Virtual Python e Dependências
+# 3. Criar ambiente virtual e instalar dependências
 echo ""
-echo "🐍 3. Configurando ambiente virtual Python..."
-if [ ! -d "venv" ]; then
-    python3 -m venv venv
-fi
+echo "🐍 Criando ambiente virtual..."
+python3 -m venv venv
 source venv/bin/activate
-pip install --upgrade pip --quiet
 pip install -r requirements.txt --quiet
 
-# 4. Criar .env se não existir
+# 4. Criar arquivo .env (se não existir)
 if [ ! -f "$APP_DIR/.env" ]; then
     echo ""
-    echo "📝 4. Criando arquivo .env a partir do .env.example..."
-    if [ -f "$APP_DIR/.env.example" ]; then
-        cp "$APP_DIR/.env.example" "$APP_DIR/.env"
-    else
-        cat > "$APP_DIR/.env" << 'EOF'
+    echo "📝 Criando arquivo .env..."
+    cat > "$APP_DIR/.env" << 'EOF'
 PORT=3002
 FLASK_DEBUG=0
-SECRET_KEY=chave_secreta_validador
-PUBLIC_URL=https://validador.marcaseleta.shop
-GUMGA_TOKEN=
-ANYMARKET_PLATFORM=SELETA
+SECRET_KEY=ALTERE_PARA_UMA_CHAVE_SEGURA
+PUBLIC_EXPORT_URL=https://app.marcaseleta.shop/export
 EOF
-    fi
-    echo "  ⚠️  IMPORTANTE: Edite /var/www/Meli_Validador/.env com seus tokens reais!"
+    echo "  ⚠️  IMPORTANTE: Edite /var/www/Meli_Validador/.env com suas configurações!"
 fi
 
-# 5. Configurar Serviço Systemd
+# 5. Instalar o serviço systemd
 echo ""
-echo "⚙️  5. Configurando serviço Systemd (meli-validador)..."
+echo "⚙️  Configurando serviço systemd..."
 cp "$APP_DIR/deploy/meli-validador.service" /etc/systemd/system/meli-validador.service
 systemctl daemon-reload
 systemctl enable meli-validador
-systemctl restart meli-validador
-
-# 6. Configurar Nginx
-if [ -f "$APP_DIR/deploy/nginx-meli-validador.conf" ]; then
-    echo ""
-    echo "🌐 6. Configurando Nginx..."
-    cp "$APP_DIR/deploy/nginx-meli-validador.conf" /etc/nginx/sites-available/meli-validador.conf
-    ln -sf /etc/nginx/sites-available/meli-validador.conf /etc/nginx/sites-enabled/meli-validador.conf
-    nginx -t && systemctl reload nginx || echo "⚠️ Verifique as configurações de domínio no Nginx."
-fi
+systemctl start meli-validador
 
 echo ""
 echo "============================================"
-echo "  ✅ Meli Validador instalado e rodando!"
+echo "  ✅ Setup concluído!"
 echo "============================================"
 echo ""
-echo "  📍 Status: systemctl status meli-validador"
-echo "  📍 Logs:   journalctl -u meli-validador -f"
-echo "  📍 Reiniciar: systemctl restart meli-validador"
-echo "  📍 Atualizar: bash /var/www/Meli_Validador/deploy/update-vps.sh"
+echo "  📍 App público: https://app.marcaseleta.shop/export"
+echo "  📍 App local:   http://127.0.0.1:3002/export"
+echo "  📁 Diretório: $APP_DIR"
+echo "  🔧 Serviço: systemctl status meli-validador"
+echo ""
+echo "  Comandos úteis:"
+echo "    systemctl status meli-validador   # Ver status"
+echo "    systemctl restart meli-validador  # Reiniciar"
+echo "    journalctl -u meli-validador -f   # Ver logs"
 echo ""

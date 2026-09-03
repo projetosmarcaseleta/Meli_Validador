@@ -19,7 +19,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const body = $json.body || $json;\nlet skus = body.skus || [];\n\nif (typeof skus === 'string') {\n  skus = skus.split(/[\\n,;]+/).map(s => s.trim()).filter(Boolean);\n}\nif (!Array.isArray(skus)) {\n  skus = [skus];\n}\n\nskus = skus.map(s => String(s).trim()).filter(Boolean);\n\nif (skus.length === 0) {\n  return [{ json: { skus: [], skusJson: '[]' } }];\n}\n\nreturn [{\n  json: {\n    skus: skus,\n    skusJson: JSON.stringify(skus)\n  }\n}];"
+        "jsCode": "const body = $json.body || $json;\nlet skus = body.skus || [];\n\nif (typeof skus === 'string') {\n  skus = skus.split(/[\\n,;]+/).map(s => s.trim()).filter(Boolean);\n}\nif (!Array.isArray(skus)) {\n  skus = [skus];\n}\n\n// Sanitizar removendo aspas para evitar SQL injection acidental\nskus = skus.map(s => String(s).trim().replace(/'/g, '')).filter(Boolean);\n\nif (skus.length === 0) {\n  return [{\n    json: {\n      skus: [],\n      skusInClause: \"''\"\n    }\n  }];\n}\n\n// Cria lista formatada para o IN ('SKU1', 'SKU2')\nconst skusInClause = skus.map(s => `'${s}'`).join(', ');\n\nreturn [{\n  json: {\n    skus: skus,\n    skusInClause: skusInClause\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -33,10 +33,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT DISTINCT\n    sm.sku_in_marketplace AS sku,\n    sm.id_in_marketplace AS mlb,\n    sm.is_catalog,\n    sm.status_in_marketplace\nFROM anymarket_prd.sku_marketplace AS sm\nWHERE sm.market_place = 'MERCADO_LIVRE'\n  AND sm.id_in_marketplace IS NOT NULL\n  AND sm.sku_in_marketplace IN (\n    SELECT json_array_elements_text($1::json)\n  )\nORDER BY sm.sku_in_marketplace, sm.is_catalog DESC;",
-        "additionalFields": {
-          "queryParams": "={{ $json.skusJson }}"
-        }
+        "query": "=SELECT DISTINCT\n    sm.sku_in_marketplace AS sku,\n    sm.id_in_marketplace AS mlb,\n    sm.is_catalog,\n    sm.status_in_marketplace\nFROM anymarket_prd.sku_marketplace AS sm\nWHERE sm.market_place = 'MERCADO_LIVRE'\n  AND sm.id_in_marketplace IS NOT NULL\n  AND sm.sku_in_marketplace IN ({{ $json.skusInClause }})\nORDER BY sm.sku_in_marketplace, sm.is_catalog DESC;"
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,

@@ -15,7 +15,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 from anymarket_api import validate_gumga_token
 from api import validate_token
-from config import ANYMARKET_PLATFORM, GUMGA_TOKEN
+from config import ANYMARKET_PLATFORM, GUMGA_TOKEN, AI_PREVALIDATION_ENABLED
 from exporter import (
     process_mlbs,
     process_mlbs_for_audit,
@@ -23,6 +23,8 @@ from exporter import (
     process_skus_for_catalog_excel,
 )
 from import_parser import parse_spreadsheet
+from openai_vision import run_prevalidation
+from prevalidation import PROMPT_VERSION, PrevalidationError, pair_from_audit_item
 
 try:
     from dotenv import load_dotenv
@@ -220,13 +222,18 @@ def api_export():
         if not sku_list:
             return jsonify({"success": False, "error": "Informe uma lista de SKUs."}), 400
 
-        print(f"[EXPORT CATÁLOGO] {len(sku_list)} SKUs | filtro={filter_decision}")
+        audit_items = data.get("audit_items")
+        if isinstance(audit_items, list) and audit_items:
+            print(f"[EXPORT CATÁLOGO] {len(audit_items)} itens da auditoria | filtro={filter_decision}")
+        else:
+            print(f"[EXPORT CATÁLOGO] {len(sku_list)} SKUs | filtro={filter_decision}")
         try:
             rows, errors = process_skus_for_catalog_excel(
                 sku_list,
                 token,
                 reviews=reviews or None,
                 filter_decision=filter_decision,
+                audit_items=audit_items if isinstance(audit_items, list) and audit_items else None,
             )
         except Exception as exc:
             return jsonify({"success": False, "error": f"Erro interno: {str(exc)}"}), 500
@@ -458,11 +465,94 @@ def sync_google_sheet():
         return jsonify({"success": False, "error": f"Falha na requisição para a Planilha: {str(exc)}"}), 500
 
 
+_AI_USER_ERROR = (
+    "Falha na pré-validação por IA. Tente novamente ou prossiga com revisão manual."
+)
 
-@app.route("/health")
-def health():
-    """Rota leve para health check do portal de deploy."""
-    return {"status": "ok"}, 200
+
+def _validate_one_ad(raw_item: dict) -> dict:
+    sku = str((raw_item or {}).get("sku") or "")
+    try:
+        report = run_prevalidation(raw_item or {})
+        sku = str(report.get("sku") or sku)
+        return {
+            "success": True,
+            "sku": sku,
+            "report": report,
+            "ai_status": "ok",
+            "prompt_version": PROMPT_VERSION,
+        }
+    except PrevalidationError as exc:
+        try:
+            sku = sku or pair_from_audit_item(raw_item or {}).get("sku") or ""
+        except Exception:
+            pass
+        return {
+            "success": False,
+            "sku": sku,
+            "ai_status": "error",
+            "error": _AI_USER_ERROR,
+            "detail": exc.detail,
+            "prompt_version": PROMPT_VERSION,
+        }
+    except Exception as exc:
+        print(f"[VALIDATE-ADS] erro inesperado: {type(exc).__name__}: {exc}")
+        return {
+            "success": False,
+            "sku": sku,
+            "ai_status": "error",
+            "error": _AI_USER_ERROR,
+            "detail": "upstream_4xx",
+            "prompt_version": PROMPT_VERSION,
+        }
+
+
+def _fail_closed_status(detail: str) -> int:
+    if detail in ("invalid_payload", "invalid_json"):
+        return 422
+    if detail == "missing_key":
+        return 503
+    return 502
+
+
+@app.route("/api/validate-ads", methods=["POST"])
+@app.route("/export/api/validate-ads", methods=["POST"])
+def api_validate_ads():
+    if not AI_PREVALIDATION_ENABLED:
+        return jsonify({
+            "success": False,
+            "ai_status": "disabled",
+            "error": "Pré-validação IA temporariamente desabilitada.",
+            "detail": "ai_disabled",
+            "prompt_version": PROMPT_VERSION,
+        }), 503
+
+    data = request.json or {}
+    raw_items = data.get("items")
+    if raw_items is None and (data.get("sku") or data.get("catalogo") or data.get("ml")):
+        raw_items = [data]
+    if not isinstance(raw_items, list) or not raw_items:
+        return jsonify({
+            "success": False,
+            "ai_status": "error",
+            "error": "Informe ao menos um anúncio para pré-validar.",
+            "detail": "invalid_payload",
+        }), 400
+
+    results = [_validate_one_ad(item if isinstance(item, dict) else {}) for item in raw_items]
+
+    if len(results) == 1:
+        item = results[0]
+        if item.get("success"):
+            return jsonify(item)
+        return jsonify(item), _fail_closed_status(str(item.get("detail") or "upstream_4xx"))
+
+    return jsonify({
+        "success": True,
+        "ai_status": "ok",
+        "prompt_version": PROMPT_VERSION,
+        "results": results,
+    })
 
 
 if __name__ == "__main__":

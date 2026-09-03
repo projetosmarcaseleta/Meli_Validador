@@ -4,6 +4,7 @@ exporter.py – Extrai campos do Mercado Livre e AnyMarket lado a lado com diver
 
 from __future__ import annotations
 
+import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -34,6 +35,51 @@ HEADERS = [
     "TIPO ANÚNCIO", "TIPO ENVIO", "CATÁLOGO", "QTD VENDIDA",
     "IMAGEM PRINCIPAL", "IMAGENS",
 ]
+
+_MLB_PATTERN = re.compile(r"^MLB\d+$", re.IGNORECASE)
+_last_db_error: str | None = None
+
+
+def _is_mlb(value: str) -> bool:
+    return bool(_MLB_PATTERN.match(str(value or "").strip()))
+
+
+def _get_last_db_error() -> str | None:
+    return _last_db_error
+
+
+def _merge_sku_maps(target: dict[str, dict], source: dict[str, dict]) -> None:
+    for sku, data in source.items():
+        if sku not in target:
+            target[sku] = {"cat": [], "trad": []}
+        for side in ("cat", "trad"):
+            seen = {m for m, _ in target[sku][side]}
+            for mlb, status in data.get(side, []):
+                if mlb not in seen:
+                    target[sku][side].append((mlb, status))
+                    seen.add(mlb)
+
+
+def _append_mlb_slot(sku_map: dict[str, dict], sku: str, mlb: str, is_catalog: bool, status: str = "") -> None:
+    if sku not in sku_map:
+        sku_map[sku] = {"cat": [], "trad": []}
+    side = "cat" if is_catalog else "trad"
+    existing = {m for m, _ in sku_map[sku][side]}
+    if mlb not in existing:
+        sku_map[sku][side].append((mlb, status or "active"))
+
+
+def _enrich_sku_from_ml_search(sku: str, user_id, token: str, sku_map: dict[str, dict]) -> None:
+    mlbs = search_items_by_seller_sku(user_id, sku, token)
+    if not mlbs:
+        return
+    products = get_products_batch(mlbs, token)
+    for mlb, prod in products.items():
+        if not prod:
+            continue
+        is_catalog = bool(prod.get("catalog_listing"))
+        status = str(prod.get("status") or "active")
+        _append_mlb_slot(sku_map, sku, mlb, is_catalog, status)
 
 
 def _attrs_map(produto: dict) -> dict:
@@ -514,11 +560,15 @@ def process_mlbs_for_audit(
 
 def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
     """
-    Mapeia cada SKU aos seus anúncios no Mercado Livre (Catálogo e Tradicional).
+    Consulta o banco de leitura do AnyMarket para mapear cada SKU
+    aos seus anúncios no Mercado Livre (Catálogo e Tradicional).
     Prioridade 1: Webhook do n8n (ANYMARKET_SKU_WEBHOOK_URL) - ideal para VPS sem acesso direto ao banco.
     Prioridade 2: Conexão direta PostgreSQL (ANYMARKET_DB_HOST) - para ambiente com VPN.
     Retorna { sku: { 'cat': [(mlb, status)], 'trad': [(mlb, status)] } }
+    Filtra: market_place = 'MERCADO_LIVRE' AND sku_in_marketplace IN (...)
     """
+    global _last_db_error
+    _last_db_error = None
     sku_map: dict[str, dict] = {s: {"cat": [], "trad": []} for s in skus}
     if not skus:
         return sku_map
@@ -542,7 +592,8 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
                         trad_list = [(str(m[0]).upper(), str(m[1])) for m in val.get("trad", []) if m and len(m) >= 2]
                         sku_map[s_clean]["cat"] = cat_list
                         sku_map[s_clean]["trad"] = trad_list
-                return sku_map
+                if any(sku_map[s]["cat"] or sku_map[s]["trad"] for s in sku_map):
+                    return sku_map
             else:
                 print(f"[N8N WEBHOOK ERRO] HTTP {resp.status_code}: {resp.text[:200]}")
         except Exception as exc:
@@ -550,6 +601,8 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
 
     # 2. Tentar via Conexão Direta ao PostgreSQL
     if not ANYMARKET_DB_HOST or not ANYMARKET_DB_USER:
+        if skus and not ANYMARKET_DB_HOST and not ANYMARKET_SKU_WEBHOOK_URL:
+            _last_db_error = "Réplica AnyMarket não configurada (ANYMARKET_DB_HOST/WEBHOOK ausente)."
         return sku_map
 
     try:
@@ -560,8 +613,8 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
             host=ANYMARKET_DB_HOST,
             port=ANYMARKET_DB_PORT,
             dbname=ANYMARKET_DB_NAME,
-            user=ANYMARKET_DB_USER,
-            password=ANYMARKET_DB_PASSWORD,
+            user=ANYMARKET_DB_USER.strip().strip("'\""),
+            password=ANYMARKET_DB_PASSWORD.strip().strip("'\""),
             sslmode=ANYMARKET_DB_SSLMODE,
             connect_timeout=15,
         ) as conn:
@@ -588,13 +641,112 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
                         is_cat = int(row[2] or 0)
                         status = str(row[3] or "")
                         if s in sku_map and mlb.startswith("MLB"):
-                            if is_cat == 1:
-                                sku_map[s]["cat"].append((mlb, status))
-                            else:
-                                sku_map[s]["trad"].append((mlb, status))
+                            _append_mlb_slot(sku_map, s, mlb, is_cat == 1, status)
     except Exception as exc:
+        _last_db_error = str(exc)
         print(f"[DB ANYMARKET ERRO] Falha ao consultar réplica AnyMarket: {exc}")
 
+    return sku_map
+
+
+def _resolve_mlbs_from_anymarket_db(mlbs: list[str]) -> dict[str, dict]:
+    """
+    Resolve MLB(s) → SKU seller via réplica AnyMarket (id_in_marketplace) ou Webhook n8n.
+    Retorna mapa keyed pelo sku_in_marketplace.
+    """
+    global _last_db_error
+    sku_map: dict[str, dict] = {}
+    if not mlbs:
+        return sku_map
+
+    # 1. Tentar via Webhook n8n se configurado
+    if ANYMARKET_SKU_WEBHOOK_URL:
+        try:
+            import requests as req
+            resp = req.post(
+                ANYMARKET_SKU_WEBHOOK_URL,
+                json={"mlbs": mlbs},
+                timeout=30,
+            )
+            if resp.status_code == 200:
+                data = resp.json() or {}
+                incoming_map = data.get("sku_map") or {}
+                _merge_sku_maps(sku_map, incoming_map)
+                if sku_map:
+                    return sku_map
+            else:
+                print(f"[N8N WEBHOOK ERRO] HTTP {resp.status_code}: {resp.text[:200]}")
+        except Exception as exc:
+            print(f"[N8N WEBHOOK ERRO] Falha na consulta via n8n: {exc}")
+
+    # 2. Tentar via Conexão Direta ao PostgreSQL
+    if not ANYMARKET_DB_HOST or not ANYMARKET_DB_USER:
+        return sku_map
+
+    try:
+        import psycopg2
+        from psycopg2 import sql as psql
+
+        with psycopg2.connect(
+            host=ANYMARKET_DB_HOST,
+            port=ANYMARKET_DB_PORT,
+            dbname=ANYMARKET_DB_NAME,
+            user=ANYMARKET_DB_USER.strip().strip("'\""),
+            password=ANYMARKET_DB_PASSWORD.strip().strip("'\""),
+            sslmode=ANYMARKET_DB_SSLMODE,
+            connect_timeout=15,
+        ) as conn:
+            with conn.cursor() as cur:
+                for i in range(0, len(mlbs), 200):
+                    batch = [m.upper() for m in mlbs[i : i + 200]]
+                    placeholders = psql.SQL(", ").join(psql.Placeholder() for _ in batch)
+                    query = psql.SQL("""
+                        SELECT DISTINCT
+                            sm.sku_in_marketplace AS sku,
+                            sm.id_in_marketplace AS mlb,
+                            sm.is_catalog,
+                            sm.status_in_marketplace
+                        FROM anymarket_prd.sku_marketplace AS sm
+                        WHERE sm.market_place = 'MERCADO_LIVRE'
+                          AND sm.id_in_marketplace IN ({mlbs})
+                        ORDER BY sm.sku_in_marketplace, sm.is_catalog DESC
+                    """).format(mlbs=placeholders)
+                    cur.execute(query, batch)
+                    for row in cur.fetchall():
+                        s = str(row[0]).strip()
+                        mlb = str(row[1]).strip().upper()
+                        is_cat = int(row[2] or 0)
+                        status = str(row[3] or "")
+                        if mlb.startswith("MLB") and s:
+                            _append_mlb_slot(sku_map, s, mlb, is_cat == 1, status)
+    except Exception as exc:
+        _last_db_error = str(exc)
+        print(f"[DB ANYMARKET ERRO] Falha ao consultar MLB na réplica: {exc}")
+
+    return sku_map
+
+
+def _resolve_mlbs_via_ml_api(mlbs: list[str], token: str) -> dict[str, dict]:
+    """Resolve MLB → seller SKU via API live do Mercado Livre."""
+    sku_map: dict[str, dict] = {}
+    if not mlbs or not token:
+        return sku_map
+
+    products = get_products_batch([m.upper() for m in mlbs], token)
+    for mlb in mlbs:
+        mlb_up = mlb.upper()
+        prod = products.get(mlb_up)
+        if not prod:
+            continue
+        fields = _build_ml_fields(prod)
+        seller_sku = str(fields.get("sku") or "").strip() or mlb_up
+        _append_mlb_slot(
+            sku_map,
+            seller_sku,
+            mlb_up,
+            bool(prod.get("catalog_listing")),
+            str(prod.get("status") or "active"),
+        )
     return sku_map
 
 
@@ -623,38 +775,57 @@ def process_skus_for_catalog_audit(
             "errors": ["Nenhum SKU informado."],
         }
 
+    sku_inputs = [s for s in skus_clean if not _is_mlb(s)]
+    mlb_inputs = [s.upper() for s in skus_clean if _is_mlb(s)]
+    # (rótulo exibido, sku usado na busca)
+    input_rows: list[tuple[str, str]] = [(s, s) for s in sku_inputs]
+
     if progress_callback:
-        progress_callback(10, 100, f"Mapeando anúncios de {total_skus} SKU(s)...")
+        progress_callback(10, 100, f"Mapeando anúncios de {total_skus} entrada(s)...")
 
-    # 1. Resolver mapeamento de SKUs -> MLBs via banco de dados AnyMarket
-    db_map = _resolve_skus_from_anymarket_db(skus_clean)
-
-    # 1b. Entrada por MLB direto (funciona SEM banco): busca o anuncio na API do
-    #     Mercado Livre e classifica catalogo/tradicional pelo proprio anuncio.
-    mlb_inputs = [s for s in skus_clean if s.strip().upper().startswith("MLB")]
+    # 1. Réplica AnyMarket: sku_in_marketplace (SKU seller) ou id_in_marketplace (MLB)
+    db_map = _resolve_skus_from_anymarket_db(sku_inputs)
     if mlb_inputs:
-        _direct = get_products_batch([s.strip().upper() for s in mlb_inputs], token)
-        for s in mlb_inputs:
-            body = _direct.get(s.strip().upper())
-            if not body:
-                continue
-            mlb_id = str(body.get("id") or s).strip().upper()
-            status = str(body.get("status") or "")
-            if body.get("catalog_listing"):
-                db_map[s]["cat"].append((mlb_id, status))
-            else:
-                db_map[s]["trad"].append((mlb_id, status))
+        _merge_sku_maps(db_map, _resolve_mlbs_from_anymarket_db(mlb_inputs))
 
-    # 2. Para SKUs que não foram encontrados no banco, tenta buscar via API ML se possível
-    missing_skus = [s for s in skus_clean if not db_map.get(s, {}).get("cat") and not db_map.get(s, {}).get("trad")]
-    if missing_skus:
-        user_info = validate_token(token)
-        user_id = user_info.get("id")
+    user_info = validate_token(token) if token else {}
+    user_id = user_info.get("id")
+
+    # 2. MLB(s) via API ML → seller SKU + cat/trad
+    if mlb_inputs:
         if user_id:
-            for s in missing_skus:
-                mlbs = search_items_by_seller_sku(user_id, s, token)
-                for m in mlbs:
-                    db_map[s]["trad"].append((m, "active"))
+            _merge_sku_maps(db_map, _resolve_mlbs_via_ml_api(mlb_inputs, token))
+            for mlb in mlb_inputs:
+                for sku_key, slots in db_map.items():
+                    all_mlbs = [m for m, _ in slots["cat"]] + [m for m, _ in slots["trad"]]
+                    if mlb in all_mlbs:
+                        input_rows.append((mlb, sku_key))
+                        break
+                else:
+                    input_rows.append((mlb, mlb))
+        else:
+            for mlb in mlb_inputs:
+                input_rows.append((mlb, mlb))
+
+    # 3. Fallback: busca seller_sku na conta ML
+    missing_skus = [
+        s for s in sku_inputs
+        if not db_map.get(s, {}).get("cat") and not db_map.get(s, {}).get("trad")
+    ]
+    if missing_skus and user_id:
+        for s in missing_skus:
+            _enrich_sku_from_ml_search(s, user_id, token, db_map)
+
+    # 4. Enriquecer via ML só quando falta Catálogo ou Tradicional (evita N chamadas desnecessárias)
+    lookup_skus = {lookup for _, lookup in input_rows if not _is_mlb(lookup)}
+    if user_id:
+        for sku in lookup_skus:
+            slots = db_map.get(sku, {"cat": [], "trad": []})
+            if not slots.get("cat") or not slots.get("trad"):
+                _enrich_sku_from_ml_search(sku, user_id, token, db_map)
+
+    if not input_rows:
+        input_rows = [(s, s) for s in skus_clean]
 
     # 3. Coletar todos os MLBs únicos
     all_mlbs: list[str] = []
@@ -697,17 +868,34 @@ def process_skus_for_catalog_audit(
     count_att = 0
     count_err = 0
     errors: list[str] = []
+    db_err = _get_last_db_error()
+    if db_err:
+        errors.append(f"[ANYMARKET DB] {db_err[:220]}")
+    if mlb_inputs and not user_id:
+        errors.append("[MERCADO LIVRE] Token inválido ou expirado — informe um token válido para resolver MLB(s).")
+    elif sku_inputs and not user_id and not db_map:
+        errors.append("[MERCADO LIVRE] Token inválido ou expirado — fallback por seller_sku indisponível.")
 
-    for sku in skus_clean:
-        d = db_map.get(sku, {"cat": [], "trad": []})
+    for input_label, lookup_sku in input_rows:
+        d = db_map.get(lookup_sku, {"cat": [], "trad": []})
         cats = d.get("cat", [])
         trads = d.get("trad", [])
 
         if not cats and not trads:
-            item = build_catalog_audit_item(sku, None, None)
+            item = build_catalog_audit_item(lookup_sku, None, None)
+            if _is_mlb(input_label):
+                item["sku"] = lookup_sku if lookup_sku != input_label else input_label
+                item["summary"] = (
+                    f"MLB {input_label} não encontrado. "
+                    "Verifique o token ML e se o anúncio pertence à conta autenticada."
+                )
+                item["divergences"] = [f"MLB {input_label} não resolvido"]
             count_err += 1
             items.append(item)
-            errors.append(f"SKU {sku}: Nenhum anúncio vinculado encontrado no Mercado Livre / AnyMarket.")
+            if _is_mlb(input_label):
+                errors.append(f"MLB {input_label}: não foi possível resolver para SKU seller.")
+            else:
+                errors.append(f"SKU {lookup_sku}: nenhum anúncio vinculado (filtro: sku_in_marketplace / seller_sku ML).")
             continue
 
         def _pick_best(candidates):
@@ -728,7 +916,10 @@ def process_skus_for_catalog_audit(
         cat_prod = ml_fields_by_mlb.get(cat_mlb) if cat_mlb else None
         trad_prod = ml_fields_by_mlb.get(trad_mlb) if trad_mlb else None
 
-        audit_item = build_catalog_audit_item(sku, cat_prod, trad_prod)
+        audit_item = build_catalog_audit_item(lookup_sku, cat_prod, trad_prod)
+        if input_label != lookup_sku:
+            audit_item["input_mlb"] = input_label
+            audit_item["summary"] = f"Entrada MLB {input_label} → SKU {lookup_sku}. {audit_item.get('summary', '')}"
         st = audit_item.get("status_geral")
         if st == "OK":
             count_ok += 1
@@ -744,7 +935,7 @@ def process_skus_for_catalog_audit(
     return {
         "items": items,
         "summary": {
-            "total": len(skus_clean),
+            "total": len(input_rows),
             "divergent": count_div,
             "ok": count_ok,
             "attention": count_att,
@@ -759,13 +950,19 @@ def process_skus_for_catalog_excel(
     token: str,
     reviews: dict[str, str] | None = None,
     filter_decision: str = "all",
+    audit_items: list[dict] | None = None,
 ) -> tuple[list, list]:
     """
     Gera as linhas da planilha comparativa ML Catálogo vs ML Tradicional.
+    Se audit_items for informado, reutiliza os dados já auditados (exportação rápida).
     """
-    audit_data = process_skus_for_catalog_audit(sku_list, token)
-    items = audit_data.get("items") or []
-    errors = audit_data.get("errors") or []
+    if audit_items is not None:
+        items = audit_items
+        errors: list[str] = []
+    else:
+        audit_data = process_skus_for_catalog_audit(sku_list, token)
+        items = audit_data.get("items") or []
+        errors = audit_data.get("errors") or []
 
     reviews = reviews or {}
     filter_decision = (filter_decision or "all").lower().strip()
