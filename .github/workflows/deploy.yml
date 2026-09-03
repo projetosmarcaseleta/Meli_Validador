@@ -41,5 +41,29 @@ jobs:
             
             echo "🔄 Reiniciando serviço..."
             sudo systemctl restart meli-validador
-            
+
             echo "✅ Deploy do Meli Validador concluído com sucesso!"
+
+            TRIAGEM_DIR="$APP_DIR/triagem"
+
+            if [ -d "$TRIAGEM_DIR" ]; then
+              echo "📦 Atualizando Meli Triagem..."
+              cd "$TRIAGEM_DIR"
+
+              if [ ! -d "venv" ]; then
+                python3 -m venv venv
+              fi
+              source venv/bin/activate
+              pip install -r requirements.txt --quiet
+
+              if [ ! -f "$TRIAGEM_DIR/.env" ]; then
+                printf 'PORT=3008\nFLASK_DEBUG=0\n' > "$TRIAGEM_DIR/.env"
+              fi
+
+              sudo cp "$TRIAGEM_DIR/deploy/meli-triagem.service" /etc/systemd/system/meli-triagem.service
+              sudo systemctl daemon-reload
+              sudo systemctl enable meli-triagem
+              sudo systemctl restart meli-triagem
+
+              echo "✅ Deploy do Meli Triagem concluído com sucesso!"
+            fi

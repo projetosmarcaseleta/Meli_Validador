@@ -5,10 +5,10 @@ After=network.target
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/var/www/Meli_Triagem
-Environment="PATH=/var/www/Meli_Triagem/venv/bin:/usr/local/bin:/usr/bin:/bin"
-EnvironmentFile=-/var/www/Meli_Triagem/.env
-ExecStart=/var/www/Meli_Triagem/venv/bin/gunicorn --bind 0.0.0.0:3008 --workers 2 --timeout 120 app:app
+WorkingDirectory=/var/www/Meli_Validador/triagem
+Environment="PATH=/var/www/Meli_Validador/triagem/venv/bin:/usr/local/bin:/usr/bin:/bin"
+EnvironmentFile=-/var/www/Meli_Validador/triagem/.env
+ExecStart=/var/www/Meli_Validador/triagem/venv/bin/gunicorn --bind 0.0.0.0:3008 --workers 2 --timeout 120 app:app
 Restart=always
 RestartSec=5
 
