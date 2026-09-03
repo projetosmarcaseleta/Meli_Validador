@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meli Triagem · Filtro & Exclusão Rápida de Divergências</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090B10;
+      --surface: #11141E;
+      --surface-2: #181C2B;
+      --surface-3: #22273C;
+      --border: rgba(255, 255, 255, 0.08);
+      --border-light: rgba(255, 255, 255, 0.15);
+      --text: #F8FAFC;
+      --text-2: #94A3B8;
+      --text-3: #64748B;
+      
+      --red: #F43F5E;
+      --red-bg: rgba(244, 63, 94, 0.12);
+      --red-border: rgba(244, 63, 94, 0.35);
+      
+      --green: #10B981;
+      --green-bg: rgba(16, 185, 129, 0.12);
+      --green-border: rgba(16, 185, 129, 0.35);
+      
+      --amber: #F59E0B;
+      --amber-bg: rgba(245, 158, 11, 0.12);
+      --amber-border: rgba(245, 158, 11, 0.35);
+      
+      --blue: #38BDF8;
+      --blue-bg: rgba(56, 189, 248, 0.12);
+      --blue-border: rgba(56, 189, 248, 0.35);
+
+      --purple: #A855F7;
+      
+      --radius-sm: 6px;
+      --radius: 12px;
+      --radius-lg: 16px;
+      --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* ── Topbar ── */
+    .topbar {
+      height: 60px;
+      background: rgba(17, 20, 30, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 15px;
+      letter-spacing: -0.01em;
+    }
+    .brand-badge {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      padding: 3px 8px;
+      border-radius: 99px;
+      background: var(--red-bg);
+      color: var(--red);
+      border: 1px solid var(--red-border);
+    }
+
+    .topbar-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* ── Layout Container ── */
+    .container {
+      max-width: 1400px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 24px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ── Hero & Inputs View ── */
+    .hero-card {
+      background: linear-gradient(135deg, var(--surface) 0%, rgba(24, 28, 43, 0.6) 100%);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+    }
+
+    .hero-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .hero-title h1 {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+      color: #fff;
+    }
+    .hero-title p {
+      font-size: 13.5px;
+      color: var(--text-2);
+      margin-top: 4px;
+      line-height: 1.5;
+    }
+
+    .input-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.6fr;
+      gap: 20px;
+    }
+
+    @media (max-width: 860px) {
+      .input-grid { grid-template-columns: 1fr; }
+    }
+
+    .field-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-2);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      display: flex;
+      justify-content: space-between;
+    }
+    .field-label .sub {
+      text-transform: none;
+      font-weight: 400;
+      color: var(--text-3);
+    }
+
+    input[type="text"], textarea {
+      width: 100%;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 13px;
+      outline: none;
+      transition: all .2s var(--ease);
+    }
+    input[type="text"]:focus, textarea:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.2);
+    }
+
+    textarea {
+      height: 130px;
+      resize: vertical;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12.5px;
+      line-height: 1.5;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: var(--radius-sm);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all .2s var(--ease);
+      user-select: none;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+      color: #fff;
+      box-shadow: 0 4px 16px rgba(239, 68, 68, 0.35);
+    }
+    .btn-primary:hover {
+      background: linear-gradient(135deg, #F43F5E 0%, #E11D48 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px rgba(244, 63, 94, 0.45);
+    }
+    .btn-secondary {
+      background: var(--surface-3);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover {
+      background: rgba(255,255,255,0.1);
+      border-color: var(--border-light);
+    }
+
+    /* ── Progress Card ── */
+    .prog-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 24px;
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .prog-bar-bg {
+      height: 6px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 99px;
+      overflow: hidden;
+    }
+    .prog-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #F43F5E, #38BDF8);
+      border-radius: 99px;
+      transition: width .3s var(--ease);
+    }
+
+    /* ── KPI Dashboard Cards ── */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .kpi-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      cursor: pointer;
+      transition: all .2s var(--ease);
+      position: relative;
+      overflow: hidden;
+    }
+    .kpi-card:hover {
+      transform: translateY(-2px);
+      border-color: var(--border-light);
+    }
+    .kpi-card.active {
+      box-shadow: 0 0 0 2px var(--kpi-color, var(--blue));
+      background: var(--surface-2);
+    }
+    .kpi-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-2);
+    }
+    .kpi-num {
+      font-size: 26px;
+      font-weight: 800;
+      font-family: 'JetBrains Mono', monospace;
+      color: #fff;
+    }
+    .kpi-card.hard { --kpi-color: var(--red); }
+    .kpi-card.hard .kpi-num { color: var(--red); }
+    .kpi-card.clean { --kpi-color: var(--green); }
+    .kpi-card.clean .kpi-num { color: var(--green); }
+    .kpi-card.inc { --kpi-color: var(--amber); }
+    .kpi-card.inc .kpi-num { color: var(--amber); }
+
+    /* ── Action Toolbar ── */
+    .toolbar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 18px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .toolbar-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .toolbar-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .quick-select-btn {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 99px;
+      padding: 5px 12px;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: var(--text-2);
+      cursor: pointer;
+      transition: all .2s ease;
+    }
+    .quick-select-btn:hover {
+      background: var(--surface-3);
+      color: #fff;
+      border-color: var(--border-light);
+    }
+
+    /* ── Triage Table ── */
+    .table-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .table-wrap {
+      overflow-x: auto;
+      max-height: 600px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 12.5px;
+    }
+    thead {
+      position: sticky;
+      top: 0;
+      background: var(--surface-2);
+      z-index: 10;
+    }
+    th {
+      padding: 12px 14px;
+      font-weight: 700;
+      color: var(--text-2);
+      text-transform: uppercase;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+      color: var(--text);
+    }
+    tbody tr {
+      transition: background .15s ease;
+    }
+    tbody tr:hover {
+      background: rgba(255,255,255,0.03);
+    }
+    tbody tr.selected {
+      background: rgba(244, 63, 94, 0.07);
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 4px 9px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .badge.hard {
+      background: var(--red-bg);
+      color: var(--red);
+      border: 1px solid var(--red-border);
+    }
+    .badge.clean {
+      background: var(--green-bg);
+      color: var(--green);
+      border: 1px solid var(--green-border);
+    }
+    .badge.inc {
+      background: var(--amber-bg);
+      color: var(--amber);
+      border: 1px solid var(--amber-border);
+    }
+
+    .thumb {
+      width: 40px;
+      height: 40px;
+      border-radius: 4px;
+      object-fit: cover;
+      background: #000;
+      border: 1px solid var(--border);
+    }
+
+    .code-text {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11.5px;
+      font-weight: 700;
+      color: var(--blue);
+      cursor: pointer;
+    }
+    .code-text:hover { text-decoration: underline; }
+
+    /* ── Floating Batch Action Bar ── */
+    .floating-bar {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(120%);
+      background: rgba(17, 20, 30, 0.95);
+      backdrop-filter: blur(14px);
+      border: 1px solid var(--border-light);
+      border-radius: 99px;
+      padding: 10px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+      z-index: 100;
+      transition: transform .3s var(--ease);
+    }
+    .floating-bar.show {
+      transform: translateX(-50%) translateY(0);
+    }
+    .floating-count {
+      font-size: 13px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    /* ── Quick Inspector Modal / Drawer ── */
+    .drawer-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.8);
+      backdrop-filter: blur(8px);
+      z-index: 200;
+      display: none;
+      justify-content: flex-end;
+    }
+    .drawer-overlay.open { display: flex; }
+    .drawer-content {
+      width: 640px;
+      max-width: 90vw;
+      background: var(--surface);
+      border-left: 1px solid var(--border);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      padding: 24px;
+      gap: 20px;
+      overflow-y: auto;
+    }
+
+    /* Toast */
+    #toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 300;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Topbar ── -->
+  <nav class="topbar">
+    <div class="brand">
+      <span>🚀 Meli <strong>Triagem</strong></span>
+      <span class="brand-badge">Motor de Exclusão Rápida</span>
+    </div>
+    <div class="topbar-actions">
+      <button class="btn btn-secondary" id="btn-open-sheets" style="font-size:12px; padding:6px 12px;">
+        📊 Google Sheets (<span id="sheet-status">Configurar</span>)
+      </button>
+    </div>
+  </nav>
+
+  <div class="container">
+
+    <!-- ── Hero & Inputs ── -->
+    <div class="hero-card" id="card-input">
+      <div class="hero-header">
+        <div class="hero-title">
+          <h1>Triagem em Lote & Exclusão de Divergências</h1>
+          <p>Cole centenas de <strong>MLBs ou SKUs</strong>. O motor analisa os atributos técnicos (Cor, Voltagem, Modelo, Marca, EAN, Tamanho) e separa instantaneamente os anúncios que devem ser excluídos/reprovados de cara.</p>
+        </div>
+      </div>
+
+      <div class="input-grid">
+        <div class="field-group">
+          <label class="field-label" for="input-token">
+            <span>Token Mercado Livre</span>
+            <span class="sub">Bearer APP_USR-...</span>
+          </label>
+          <input type="text" id="input-token" placeholder="Cole seu token de acesso ML aqui" />
+
+          <div style="margin-top:12px;">
+            <button class="btn btn-primary" id="btn-run-triage" style="width:100%; height:46px; font-size:14px;">
+              ⚡ Executar Triagem em Massa
+            </button>
+          </div>
+        </div>
+
+        <div class="field-group">
+          <label class="field-label" for="input-data">
+            <span>Lista de MLBs ou SKUs</span>
+            <span class="sub">um por linha ou vírgula</span>
+          </label>
+          <textarea id="input-data" placeholder="MLB7523586708&#10;MLB7523623932&#10;241686700&#10;238601800"></textarea>
+        </div>
+      </div>
+
+      <!-- Progress -->
+      <div class="prog-card" id="prog-card">
+        <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600;">
+          <span id="prog-label">Processando triagem...</span>
+          <span id="prog-pct">0%</span>
+        </div>
+        <div class="prog-bar-bg">
+          <div class="prog-bar-fill" id="prog-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── KPI Summary Cards ── -->
+    <div class="kpi-grid" id="kpi-grid" style="display:none;">
+      <div class="kpi-card hard active" data-filter="hard">
+        <div class="kpi-top">
+          <span>🔴 Descarte Imediato</span>
+          <span>Divergência Grave</span>
+        </div>
+        <div class="kpi-num" id="kpi-hard">0</div>
+        <span style="font-size:11.5px; color:var(--text-3);">Cor, Voltagem, Modelo ou EAN divergente</span>
+      </div>
+
+      <div class="kpi-card clean" data-filter="clean">
+        <div class="kpi-top">
+          <span>🟢 Aptos & Compatíveis</span>
+          <span>Sem Divergência</span>
+        </div>
+        <div class="kpi-num" id="kpi-clean">0</div>
+        <span style="font-size:11.5px; color:var(--text-3);">Prontos para aprovação ou validação visual</span>
+      </div>
+
+      <div class="kpi-card inc" data-filter="inc">
+        <div class="kpi-top">
+          <span>🟡 Incompletos / Alertas</span>
+          <span>Atenção</span>
+        </div>
+        <div class="kpi-num" id="kpi-inc">0</div>
+        <span style="font-size:11.5px; color:var(--text-3);">Ausente no ML ou sem tradicional</span>
+      </div>
+
+      <div class="kpi-card" data-filter="all">
+        <div class="kpi-top">
+          <span>📊 Total Processado</span>
+          <span>Geral</span>
+        </div>
+        <div class="kpi-num" id="kpi-total">0</div>
+        <span style="font-size:11.5px; color:var(--text-3);">Itens pareados e analisados</span>
+      </div>
+    </div>
+
+    <!-- ── Toolbar & Action Bar ── -->
+    <div class="toolbar" id="toolbar" style="display:none;">
+      <div class="toolbar-left">
+        <span style="font-size:12px; font-weight:700; color:var(--text-2);">SELEÇÃO RÁPIDA:</span>
+        <button class="quick-select-btn" id="btn-select-all-hard">🔴 Marcar Todos os Descartados</button>
+        <button class="quick-select-btn" id="btn-select-color">🎨 Erro de Cor</button>
+        <button class="quick-select-btn" id="btn-select-voltage">⚡ Erro de Voltagem</button>
+        <button class="quick-select-btn" id="btn-select-model">🏷️ Erro de Modelo</button>
+        <button class="quick-select-btn" id="btn-unselect-all">✕ Desmarcar Todos</button>
+      </div>
+
+      <div class="toolbar-right">
+        <input type="text" id="input-search" placeholder="🔍 Filtrar tabela..." style="width:200px; height:32px; font-size:12px;" />
+        <button class="btn btn-secondary" id="btn-export-excel" style="height:32px; font-size:12px;">
+          📥 Baixar Excel Multi-Abas
+        </button>
+      </div>
+    </div>
+
+    <!-- ── Triage Table ── -->
+    <div class="table-card" id="table-card" style="display:none;">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:36px; text-align:center;"><input type="checkbox" id="chk-master" /></th>
+              <th>Status / Classificação</th>
+              <th>SKU</th>
+              <th>MLB Catálogo</th>
+              <th>MLB Tradicional</th>
+              <th>Motivo do Descarte / Divergência</th>
+              <th>Cor (Cat × Trad)</th>
+              <th>Voltagem</th>
+              <th>Modelo</th>
+              <th style="text-align:center;">Ações</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Floating Batch Action Bar ── -->
+  <div class="floating-bar" id="floating-bar">
+    <span class="floating-count" id="selected-count">0 selecionados</span>
+    <button class="btn btn-primary" id="btn-copy-selected" style="padding:7px 14px; font-size:12px;">
+      📋 Copiar MLBs Selecionados
+    </button>
+    <button class="btn btn-secondary" id="btn-export-selected" style="padding:7px 14px; font-size:12px;">
+      📥 Exportar Selecionados (.xlsx)
+    </button>
+    <button class="btn btn-secondary" id="btn-sync-selected-sheets" style="padding:7px 14px; font-size:12px; color:#38BDF8; border-color:rgba(56,189,248,0.4);">
+      📤 Sincronizar com Planilha Google
+    </button>
+  </div>
+
+  <!-- ── Side Inspector Drawer ── -->
+  <div class="drawer-overlay" id="drawer">
+    <div class="drawer-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+        <h3 id="drawer-title" style="font-size:16px;">Detalhes da Triagem</h3>
+        <button class="quick-select-btn" id="drawer-close">✕ Fechar</button>
+      </div>
+      <div id="drawer-body"></div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast-container"></div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+
+    let triageItems = [];
+    let selectedItemIds = new Set();
+    let currentFilter = 'hard';
+
+    // ── Toast Helper ──
+    function showToast(message, type = 'info') {
+      const container = $('toast-container');
+      const toast = document.createElement('div');
+      toast.style.cssText = `
+        padding: 10px 16px;
+        background: ${type === 'success' ? '#065F46' : type === 'warn' ? '#92400E' : '#1E293B'};
+        color: #fff;
+        border: 1px solid ${type === 'success' ? '#34D399' : type === 'warn' ? '#FBBF24' : '#64748B'};
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        box-shadow: 0 4px 16px rgba(0,0,0,.5);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        opacity: 0;
+        transform: translateY(10px);
+        transition: all .2s ease;
+      `;
+      toast.innerHTML = message;
+      container.appendChild(toast);
+      setTimeout(() => { toast.style.opacity = '1'; toast.style.transform = 'translateY(0)'; }, 10);
+      setTimeout(() => { toast.remove(); }, 3500);
+    }
+
+    // ── Execução da Triagem ──
+    $('btn-run-triage').addEventListener('click', async () => {
+      const token = $('input-token').value.trim();
+      const rawText = $('input-data').value.trim();
+
+      if (!token) return alert('Informe o token de acesso do Mercado Livre.');
+      if (!rawText) return alert('Cole ao menos um MLB ou SKU.');
+
+      const inputs = rawText.replace(/[,;]+/g, '\n').split('\n').map(x => x.trim()).filter(Boolean);
+
+      $('btn-run-triage').disabled = true;
+      $('prog-card').style.display = 'flex';
+      $('prog-fill').style.width = '20%';
+      $('prog-pct').textContent = '20%';
+      $('prog-label').textContent = 'Iniciando triagem em lote...';
+
+      try {
+        const res = await fetch('/api/triage', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, inputs }),
+        });
+
+        const data = await res.json();
+        $('prog-fill').style.width = '100%';
+        $('prog-pct').textContent = '100%';
+
+        setTimeout(() => { $('prog-card').style.display = 'none'; $('btn-run-triage').disabled = false; }, 400);
+
+        if (!res.ok || !data.success) {
+          alert(data.error || 'Erro ao realizar triagem.');
+          return;
+        }
+
+        triageItems = data.items || [];
+        selectedItemIds.clear();
+
+        // Por padrão, já pré-seleciona todos os Hard Mismatches para descarte rápido
+        triageItems.forEach(it => {
+          if (it.category === 'HARD_MISMATCH') selectedItemIds.add(it.item_id);
+        });
+
+        updateKpis(data.summary);
+        $('kpi-grid').style.display = 'grid';
+        $('toolbar').style.display = 'flex';
+        $('table-card').style.display = 'flex';
+
+        currentFilter = 'hard';
+        updateKpiActiveCard();
+        renderTable();
+        updateFloatingBar();
+
+      } catch (err) {
+        $('prog-card').style.display = 'none';
+        $('btn-run-triage').disabled = false;
+        alert('Falha na comunicação com o servidor.');
+      }
+    });
+
+    function updateKpis(summary = {}) {
+      $('kpi-hard').textContent = summary.hard_mismatch || 0;
+      $('kpi-clean').textContent = summary.clean_match || 0;
+      $('kpi-inc').textContent = (summary.incomplete || 0) + (summary.soft_diff || 0);
+      $('kpi-total').textContent = summary.total || 0;
+    }
+
+    function updateKpiActiveCard() {
+      document.querySelectorAll('.kpi-card').forEach(card => {
+        card.classList.toggle('active', card.dataset.filter === currentFilter);
+      });
+    }
+
+    document.querySelectorAll('.kpi-card').forEach(card => {
+      card.addEventListener('click', () => {
+        currentFilter = card.dataset.filter;
+        updateKpiActiveCard();
+        renderTable();
+      });
+    });
+
+    // ── Render Tabela ──
+    function renderTable() {
+      const tbody = $('table-body');
+      tbody.innerHTML = '';
+      const query = ($('input-search').value || '').toLowerCase().trim();
+
+      const filtered = triageItems.filter(it => {
+        if (currentFilter === 'hard' && it.category !== 'HARD_MISMATCH') return false;
+        if (currentFilter === 'clean' && it.category !== 'CLEAN_MATCH') return false;
+        if (currentFilter === 'inc' && it.category !== 'INCOMPLETE' && it.category !== 'SOFT_DIFF') return false;
+
+        if (query) {
+          const matchSku = (it.sku || '').toLowerCase().includes(query);
+          const matchCat = (it.mlb_cat || '').toLowerCase().includes(query);
+          const matchTrad = (it.mlb_trad || '').toLowerCase().includes(query);
+          const matchReason = (it.reasons_summary || '').toLowerCase().includes(query);
+          if (!matchSku && !matchCat && !matchTrad && !matchReason) return false;
+        }
+        return true;
+      });
+
+      if (!filtered.length) {
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center; padding:30px; color:var(--text-3);">Nenhum anúncio encontrado para este filtro.</td></tr>';
+        return;
+      }
+
+      filtered.forEach((it, idx) => {
+        const tr = document.createElement('tr');
+        const isSel = selectedItemIds.has(it.item_id);
+        if (isSel) tr.classList.add('selected');
+
+        const badgeCls = it.category === 'HARD_MISMATCH' ? 'hard' : (it.category === 'CLEAN_MATCH' ? 'clean' : 'inc');
+        const badgeLabel = it.category === 'HARD_MISMATCH' ? '🔴 Descarte' : (it.category === 'CLEAN_MATCH' ? '🟢 Apto' : '🟡 Atenção');
+
+        tr.innerHTML = `
+          <td style="text-align:center;">
+            <input type="checkbox" class="row-chk" data-id="${it.item_id}" ${isSel ? 'checked' : ''} />
+          </td>
+          <td><span class="badge ${badgeCls}">${badgeLabel}</span></td>
+          <td><strong style="color:#fff;">${it.sku}</strong></td>
+          <td><span class="code-text" onclick="copyToClipboard('${it.mlb_cat}')">${it.mlb_cat || '-'}</span></td>
+          <td><span class="code-text" onclick="copyToClipboard('${it.mlb_trad}')">${it.mlb_trad || '-'}</span></td>
+          <td style="max-width:320px;"><span style="color:${it.category === 'HARD_MISMATCH' ? 'var(--red)' : 'var(--text-2)'}; font-weight:600;">${it.reasons_summary || 'OK'}</span></td>
+          <td>${it.cat?.color_raw || '-'} × ${it.trad?.color_raw || '-'}</td>
+          <td>${it.cat?.voltage_raw || '-'} × ${it.trad?.voltage_raw || '-'}</td>
+          <td>${it.cat?.model_raw || '-'}</td>
+          <td style="text-align:center;">
+            <button class="quick-select-btn" onclick="openDrawer(${idx})" style="font-size:11px; padding:3px 8px;">🔍 Ver</button>
+          </td>
+        `;
+
+        tr.querySelector('.row-chk').addEventListener('change', (e) => {
+          if (e.target.checked) selectedItemIds.add(it.item_id);
+          else selectedItemIds.delete(it.item_id);
+          tr.classList.toggle('selected', e.target.checked);
+          updateFloatingBar();
+        });
+
+        tbody.appendChild(tr);
+      });
+
+      updateMasterCheckbox();
+    }
+
+    $('input-search').addEventListener('input', renderTable);
+
+    // ── Checkboxes & Seleções Rápidas ──
+    $('chk-master').addEventListener('change', (e) => {
+      const checked = e.target.checked;
+      document.querySelectorAll('.row-chk').forEach(chk => {
+        chk.checked = checked;
+        const id = chk.dataset.id;
+        if (checked) selectedItemIds.add(id);
+        else selectedItemIds.delete(id);
+      });
+      renderTable();
+      updateFloatingBar();
+    });
+
+    function updateMasterCheckbox() {
+      const allChks = document.querySelectorAll('.row-chk');
+      if (!allChks.length) { $('chk-master').checked = false; return; }
+      const allChecked = Array.from(allChks).every(c => c.checked);
+      $('chk-master').checked = allChecked;
+    }
+
+    $('btn-select-all-hard').addEventListener('click', () => {
+      triageItems.forEach(it => {
+        if (it.category === 'HARD_MISMATCH') selectedItemIds.add(it.item_id);
+      });
+      renderTable();
+      updateFloatingBar();
+      showToast(`Marcados todos os ${triageItems.filter(i => i.category === 'HARD_MISMATCH').length} descartados.`, 'success');
+    });
+
+    $('btn-select-color').addEventListener('click', () => {
+      let count = 0;
+      triageItems.forEach(it => {
+        if (it.field_diffs?.color?.status === 'HARD_MISMATCH') {
+          selectedItemIds.add(it.item_id);
+          count++;
+        }
+      });
+      renderTable();
+      updateFloatingBar();
+      showToast(`${count} itens com erro de cor selecionados.`, 'info');
+    });
+
+    $('btn-select-voltage').addEventListener('click', () => {
+      let count = 0;
+      triageItems.forEach(it => {
+        if (it.field_diffs?.voltage?.status === 'HARD_MISMATCH') {
+          selectedItemIds.add(it.item_id);
+          count++;
+        }
+      });
+      renderTable();
+      updateFloatingBar();
+      showToast(`${count} itens com erro de voltagem selecionados.`, 'info');
+    });
+
+    $('btn-select-model').addEventListener('click', () => {
+      let count = 0;
+      triageItems.forEach(it => {
+        if (it.field_diffs?.model?.status === 'HARD_MISMATCH') {
+          selectedItemIds.add(it.item_id);
+          count++;
+        }
+      });
+      renderTable();
+      updateFloatingBar();
+      showToast(`${count} itens com erro de modelo selecionados.`, 'info');
+    });
+
+    $('btn-unselect-all').addEventListener('click', () => {
+      selectedItemIds.clear();
+      renderTable();
+      updateFloatingBar();
+    });
+
+    function updateFloatingBar() {
+      const count = selectedItemIds.size;
+      $('selected-count').textContent = `${count} anúncio(s) selecionado(s)`;
+      if (count > 0) {
+        $('floating-bar').classList.add('show');
+      } else {
+        $('floating-bar').classList.remove('show');
+      }
+    }
+
+    // ── Ações em Lote ──
+    function copyToClipboard(text) {
+      if (!text) return;
+      navigator.clipboard.writeText(text);
+      showToast(`Copiado: <strong>${text}</strong>`, 'info');
+    }
+
+    $('btn-copy-selected').addEventListener('click', () => {
+      const selectedItems = triageItems.filter(it => selectedItemIds.has(it.item_id));
+      const mlbs = selectedItems.map(it => it.mlb_cat || it.mlb_trad).filter(Boolean);
+      if (!mlbs.length) return alert('Nenhum MLB encontrado nos selecionados.');
+      navigator.clipboard.writeText(mlbs.join('\n'));
+      showToast(`📋 <strong>${mlbs.length} MLBs</strong> copiados para a área de transferência!`, 'success');
+    });
+
+    $('btn-export-excel').addEventListener('click', () => downloadExcel('all'));
+    $('btn-export-selected').addEventListener('click', () => downloadExcel('selected'));
+
+    async function downloadExcel(mode = 'all') {
+      if (!triageItems.length) return alert('Nenhum item para exportar.');
+      showToast('📥 Gerando planilha Excel...', 'info');
+
+      try {
+        const res = await fetch('/api/export', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: triageItems,
+            selected_ids: mode === 'selected' ? Array.from(selectedItemIds) : [],
+            filter_category: 'all',
+          }),
+        });
+
+        if (!res.ok) throw new Error('Erro ao baixar planilha');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = mode === 'selected' ? 'Meli_Triagem_Selecionados.xlsx' : 'Meli_Triagem_Completo.xlsx';
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('✅ Planilha baixada com sucesso!', 'success');
+      } catch (e) {
+        alert('Erro ao exportar planilha Excel.');
+      }
+    }
+
+    // ── Sincronização com Google Sheets ──
+    $('btn-sync-selected-sheets').addEventListener('click', async () => {
+      const selectedItems = triageItems.filter(it => selectedItemIds.has(it.item_id));
+      if (!selectedItems.length) return alert('Selecione ao menos um anúncio.');
+
+      const webhookUrl = localStorage.getItem('google_sheet_webhook_url') || '';
+      if (!webhookUrl) {
+        const urlInput = prompt('Informe a URL do Webhook do Google Apps Script:');
+        if (!urlInput) return;
+        localStorage.setItem('google_sheet_webhook_url', urlInput.trim());
+      }
+
+      showToast(`Enviando ${selectedItems.length} descartes para a Planilha...`, 'info');
+
+      try {
+        const res = await fetch('/api/sync_google_sheet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            webhook_url: localStorage.getItem('google_sheet_webhook_url'),
+            items: selectedItems,
+            status: 'Incorreto'
+          }),
+        });
+        const data = await res.json();
+        if (data.success) {
+          showToast(`✅ <strong>${selectedItems.length} anúncios</strong> marcados como "Incorreto" na Planilha!`, 'success');
+        } else {
+          showToast(`⚠️ Erro: ${data.error}`, 'warn');
+        }
+      } catch {
+        showToast('❌ Falha na conexão com a planilha.', 'warn');
+      }
+    });
+
+    // ── Drawer de Inspeção Rápida ──
+    function openDrawer(idx) {
+      const item = triageItems[idx];
+      if (!item) return;
+
+      $('drawer-title').textContent = `Inspeção Rápida · SKU ${item.sku}`;
+      const cat = item.cat || {};
+      const trad = item.trad || {};
+
+      $('drawer-body').innerHTML = `
+        <div style="background:var(--surface-2); padding:12px; border-radius:8px; border:1px solid var(--border); font-size:12px;">
+          <strong style="color:${item.category === 'HARD_MISMATCH' ? 'var(--red)' : 'var(--green)'};">Motivo da Classificação:</strong>
+          <p style="margin-top:4px;">${item.reasons_summary || 'Atributos compatíveis'}</p>
+        </div>
+
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px;">
+          <div style="background:var(--surface-2); padding:12px; border-radius:8px; border:1px solid var(--border);">
+            <div style="font-weight:700; color:var(--blue); font-size:12px; margin-bottom:8px;">🏷️ Catálogo (${item.mlb_cat || 'N/A'})</div>
+            ${cat.image_main ? `<img src="${cat.image_main}" class="thumb" style="width:100%; height:160px; object-fit:contain; margin-bottom:8px;" />` : ''}
+            <div style="font-size:11.5px; line-height:1.6;">
+              <div><strong>Título:</strong> ${cat.title || '-'}</div>
+              <div><strong>Cor:</strong> ${cat.color_raw || '-'}</div>
+              <div><strong>Voltagem:</strong> ${cat.voltage_raw || '-'}</div>
+              <div><strong>Modelo:</strong> ${cat.model_raw || '-'}</div>
+              <div><strong>Marca:</strong> ${cat.brand_raw || '-'}</div>
+              <div><strong>Preço:</strong> R$ ${cat.price || 0}</div>
+            </div>
+          </div>
+
+          <div style="background:var(--surface-2); padding:12px; border-radius:8px; border:1px solid var(--border);">
+            <div style="font-weight:700; color:var(--amber); font-size:12px; margin-bottom:8px;">📦 Tradicional (${item.mlb_trad || 'N/A'})</div>
+            ${trad.image_main ? `<img src="${trad.image_main}" class="thumb" style="width:100%; height:160px; object-fit:contain; margin-bottom:8px;" />` : ''}
+            <div style="font-size:11.5px; line-height:1.6;">
+              <div><strong>Título:</strong> ${trad.title || '-'}</div>
+              <div><strong>Cor:</strong> ${trad.color_raw || '-'}</div>
+              <div><strong>Voltagem:</strong> ${trad.voltage_raw || '-'}</div>
+              <div><strong>Modelo:</strong> ${trad.model_raw || '-'}</div>
+              <div><strong>Marca:</strong> ${trad.brand_raw || '-'}</div>
+              <div><strong>Preço:</strong> R$ ${trad.price || 0}</div>
+            </div>
+          </div>
+        </div>
+      `;
+
+      $('drawer').classList.add('open');
+    }
+
+    $('drawer-close').addEventListener('click', () => $('drawer').classList.remove('open'));
+    $('drawer').addEventListener('click', (e) => {
+      if (e.target === $('drawer')) $('drawer').classList.remove('open');
+    });
+
+  </script>
+</body>
+</html>
