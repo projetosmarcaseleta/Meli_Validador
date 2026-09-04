@@ -274,7 +274,10 @@ def _char_value(chars: dict[str, str], *names: str) -> str:
     return ""
 
 
-def _variation_values(product: dict, *type_names: str) -> list[str]:
+def _sku_variation_values(sku: dict | None, *type_names: str) -> list[str]:
+    """Lê description das variations do SKU filtrando por type.name (color, voltage, size)."""
+    if not sku or not isinstance(sku, dict):
+        return []
     needles = [n.strip().lower() for n in type_names]
     values: list[str] = []
     seen: set[str] = set()
@@ -289,23 +292,34 @@ def _variation_values(product: dict, *type_names: str) -> list[str]:
         seen.add(val)
         values.append(val)
 
+    variations = sku.get("variations")
+    if isinstance(variations, list):
+        for var in variations:
+            if not isinstance(var, dict):
+                continue
+            type_obj = var.get("type") or {}
+            type_name = ""
+            if isinstance(type_obj, dict):
+                type_name = str(type_obj.get("name") or "")
+            elif isinstance(type_obj, str):
+                type_name = type_obj
+            _add(str(var.get("description") or var.get("value") or ""), type_name)
+    elif isinstance(variations, dict):
+        for type_name, value in variations.items():
+            _add(str(value or ""), str(type_name or ""))
+    return values
+
+
+def _variation_values(product: dict, *type_names: str) -> list[str]:
+    values: list[str] = []
+    seen: set[str] = set()
     for sku in product.get("skus") or []:
         if not isinstance(sku, dict):
             continue
-        variations = sku.get("variations")
-        if isinstance(variations, list):
-            for var in variations:
-                if not isinstance(var, dict):
-                    continue
-                type_obj = var.get("type") or {}
-                type_name = ""
-                if isinstance(type_obj, dict):
-                    type_name = str(type_obj.get("name") or "")
-                _add(str(var.get("description") or ""), type_name)
-        elif isinstance(variations, dict):
-            for type_name, value in variations.items():
-                _add(str(value or ""), str(type_name or ""))
-
+        for val in _sku_variation_values(sku, *type_names):
+            if val not in seen:
+                seen.add(val)
+                values.append(val)
     return values
 
 
@@ -403,20 +417,14 @@ def extract_anymarket_fields(product: dict, sku_hint: str = "") -> dict[str, str
     partner_ids = [str(s.get("partnerId") or "").strip() for s in skus if s.get("partnerId")]
     partner_ids = [p for p in partner_ids if p]
 
-    color = _char_value(chars, "cor", "color", "cores", "cor principal")
-    if not color:
-        color = " | ".join(_variation_values(product, "cor", "color"))
-
-    size = _char_value(chars, "tamanho", "size", "tamanho do produto")
-    if not size:
-        size = " | ".join(_variation_values(product, "tamanho", "size"))
+    color = " | ".join(_sku_variation_values(selected_sku, "cor", "color"))
+    size = " | ".join(_sku_variation_values(selected_sku, "tamanho", "size"))
+    voltage = " | ".join(_sku_variation_values(selected_sku, "voltagem", "voltage"))
 
     gender_raw = str(product.get("gender") or "").strip()
     gender = GENDER_LABELS.get(gender_raw.upper(), gender_raw)
     if not gender:
         gender = _char_value(chars, "gênero", "genero", "gender")
-
-    voltage = _char_value(chars, "voltagem", "voltage", "voltagem do produto")
     images = _image_urls(product)
 
     brand_obj = product.get("brand") or {}
