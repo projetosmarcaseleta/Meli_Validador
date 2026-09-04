@@ -534,6 +534,12 @@
             <span class="sub">Bearer APP_USR-...</span>
           </label>
           <input type="text" id="input-token" placeholder="Cole seu token de acesso ML aqui" />
+          <div style="margin-top:8px; display:flex; gap:8px;">
+            <button class="btn btn-secondary" id="btn-refresh-token" type="button" style="flex:1; height:38px;">
+              Atualizar Token
+            </button>
+          </div>
+          <div id="token-chip" style="display:none; margin-top:8px; font-size:12px; font-weight:600;"></div>
 
           <div style="margin-top:12px;">
             <button class="btn btn-primary" id="btn-run-triage" style="width:100%; height:46px; font-size:14px;">
@@ -706,6 +712,41 @@
       setTimeout(() => { toast.style.opacity = '1'; toast.style.transform = 'translateY(0)'; }, 10);
       setTimeout(() => { toast.remove(); }, 3500);
     }
+
+    $('btn-refresh-token').addEventListener('click', async () => {
+      const btn = $('btn-refresh-token');
+      const chip = $('token-chip');
+      btn.disabled = true;
+      btn.textContent = 'Atualizando...';
+      chip.style.display = 'block';
+      chip.style.color = '#94A3B8';
+      chip.textContent = 'Renovando token via n8n...';
+      try {
+        const res = await fetch('/api/refresh_token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}'
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success || !data.token) {
+          chip.style.color = '#F43F5E';
+          chip.textContent = data.error || 'Falha ao renovar o token.';
+          showToast(data.error || 'Falha ao renovar o token.', 'warn');
+          return;
+        }
+        $('input-token').value = data.token;
+        chip.style.color = '#10B981';
+        chip.textContent = `✓ Token atualizado · ${data.nickname} · ID ${data.id}`;
+        showToast('Token do Mercado Livre atualizado.', 'success');
+      } catch {
+        chip.style.color = '#F43F5E';
+        chip.textContent = 'Erro de conexão ao renovar o token.';
+        showToast('Erro de conexão ao renovar o token.', 'warn');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Atualizar Token';
+      }
+    });
 
     // ── Execução da Triagem ──
     $('btn-run-triage').addEventListener('click', async () => {

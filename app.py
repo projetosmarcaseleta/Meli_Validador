@@ -15,7 +15,8 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 from anymarket_api import validate_gumga_token
 from api import validate_token
-from config import ANYMARKET_PLATFORM, GUMGA_TOKEN, AI_PREVALIDATION_ENABLED
+from config import ANYMARKET_PLATFORM, GUMGA_TOKEN, AI_PREVALIDATION_ENABLED, MELI_TOKEN_WEBHOOK_URL, HTTP_TIMEOUT
+from n8n_token import fetch_meli_token_from_n8n
 from exporter import (
     process_mlbs,
     process_mlbs_for_audit,
@@ -147,6 +148,29 @@ def api_validate_token():
     if user and user.get("id"):
         return jsonify({"valid": True, "nickname": user.get("nickname"), "id": user.get("id")})
     return jsonify({"valid": False, "error": "Token inválido ou expirado."}), 401
+
+
+@app.route("/api/refresh_token", methods=["POST"])
+@app.route("/auditarcatalogo/api/refresh_token", methods=["POST"])
+def api_refresh_token():
+    result = fetch_meli_token_from_n8n(MELI_TOKEN_WEBHOOK_URL, timeout=HTTP_TIMEOUT)
+    if not result.get("ok"):
+        return jsonify({"success": False, "error": result.get("error") or "Falha ao renovar o token."}), 502
+
+    token = (result.get("token") or "").strip()
+    user = validate_token(token)
+    if not user or not user.get("id"):
+        return jsonify({
+            "success": False,
+            "error": "Token renovado, mas o Mercado Livre recusou. Tente novamente.",
+        }), 401
+
+    return jsonify({
+        "success": True,
+        "token": token,
+        "nickname": user.get("nickname"),
+        "id": user.get("id"),
+    })
 
 
 @app.route("/api/validate_gumga", methods=["POST"])

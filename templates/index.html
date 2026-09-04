@@ -272,6 +272,23 @@
       background: rgba(56,189,248,.06);
     }
 
+    .btn-verify:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .btn-refresh-token {
+      color: #09090F;
+      background: #FFE600;
+      border-color: transparent;
+    }
+
+    .btn-refresh-token:hover:not(:disabled) {
+      color: #09090F;
+      background: #ffe866;
+      border-color: transparent;
+    }
+
     .token-status {
       display: none;
       font-size: 11.5px;
@@ -1298,6 +1315,7 @@
           </label>
           <div class="input-row">
             <input id="input-token" type="text" placeholder="APP_USR-..." />
+            <button id="btn-refresh-token" class="btn-verify btn-refresh-token" type="button">Atualizar Token</button>
             <button id="btn-validate" class="btn-verify" type="button">Validar Token</button>
           </div>
           <div id="token-chip" class="token-status"></div>
@@ -1729,6 +1747,41 @@
     } catch {
       chip.className = 'token-status err';
       chip.textContent = 'Erro de conexão ao ler planilha.';
+    }
+  });
+
+  // Token ML — renovar via n8n
+  $('btn-refresh-token').addEventListener('click', async () => {
+    const chip = $('token-chip');
+    const btn = $('btn-refresh-token');
+    btn.textContent = 'Atualizando...';
+    btn.disabled = true;
+    $('btn-validate').disabled = true;
+    chip.className = 'token-status';
+    chip.style.display = 'flex';
+    chip.textContent = 'Renovando token via n8n...';
+    try {
+      const res = await fetch('{{ url_for("api_refresh_token") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}'
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.token) {
+        chip.className = 'token-status err';
+        chip.textContent = data.error || 'Falha ao renovar o token.';
+        return;
+      }
+      $('input-token').value = data.token;
+      chip.className = 'token-status ok';
+      chip.textContent = `✓ Token atualizado · ${data.nickname} · ID ${data.id}`;
+    } catch {
+      chip.className = 'token-status err';
+      chip.textContent = 'Erro de conexão ao renovar o token.';
+    } finally {
+      btn.textContent = 'Atualizar Token';
+      btn.disabled = false;
+      $('btn-validate').disabled = false;
     }
   });
 

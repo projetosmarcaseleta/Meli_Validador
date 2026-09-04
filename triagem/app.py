@@ -7,8 +7,16 @@ import uuid
 import requests as req
 from flask import Flask, render_template, request, jsonify, send_file
 
-from config import PORT, GOOGLE_SHEET_WEBHOOK_URL
+from pathlib import Path
+import sys
+
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT) not in sys.path:
+    sys.path.append(str(_ROOT))
+
+from config import PORT, GOOGLE_SHEET_WEBHOOK_URL, MELI_TOKEN_WEBHOOK_URL, HTTP_TIMEOUT
 from api import validate_token
+from n8n_token import fetch_meli_token_from_n8n
 from triage_engine import run_batch_triage
 from exporter import generate_triage_excel
 
@@ -39,6 +47,28 @@ def api_validate_token():
             "nickname": user.get("nickname"),
         })
     return jsonify({"valid": False, "error": "Token inválido ou expirado."}), 401
+
+
+@app.route("/api/refresh_token", methods=["POST"])
+def api_refresh_token():
+    result = fetch_meli_token_from_n8n(MELI_TOKEN_WEBHOOK_URL, timeout=HTTP_TIMEOUT)
+    if not result.get("ok"):
+        return jsonify({"success": False, "error": result.get("error") or "Falha ao renovar o token."}), 502
+
+    token = (result.get("token") or "").strip()
+    user = validate_token(token)
+    if not user or not user.get("id"):
+        return jsonify({
+            "success": False,
+            "error": "Token renovado, mas o Mercado Livre recusou. Tente novamente.",
+        }), 401
+
+    return jsonify({
+        "success": True,
+        "token": token,
+        "nickname": user.get("nickname"),
+        "id": user.get("id"),
+    })
 
 
 @app.route("/api/triage", methods=["POST"])

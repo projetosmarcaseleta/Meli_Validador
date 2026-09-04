@@ -20,6 +20,12 @@ PROXY        = os.environ.get("HTTP_PROXY", None)
 HTTP_TIMEOUT = int(os.environ.get("HTTP_TIMEOUT", "30"))
 MAX_WORKERS  = int(os.environ.get("MAX_WORKERS", "10"))
 
+# Webhook n8n que devolve o access token ML (campo api_key). Usar URL de produção.
+MELI_TOKEN_WEBHOOK_URL = os.environ.get(
+    "MELI_TOKEN_WEBHOOK_URL",
+    "https://api.marcaseleta.shop/webhook/646be4d7-0db5-42c3-96b4-654058ef7a79",
+).strip().strip("'\"")
+
 ANYMARKET_API_BASE_URL = os.environ.get(
     "ANYMARKET_API_BASE_URL",
     "https://api.anymarket.com.br/v2",

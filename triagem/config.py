@@ -17,6 +17,12 @@ except ImportError:
 
 PORT = int(os.environ.get("PORT", os.environ.get("MELI_TRIAGEM_PORT", "3008")))
 API_BASE_URL = os.environ.get("ML_API_BASE_URL", "https://api.mercadolibre.com")
+
+# Webhook n8n que devolve o access token ML (campo api_key). Usar URL de produção.
+MELI_TOKEN_WEBHOOK_URL = os.environ.get(
+    "MELI_TOKEN_WEBHOOK_URL",
+    "https://api.marcaseleta.shop/webhook/646be4d7-0db5-42c3-96b4-654058ef7a79",
+).strip().strip("'\"")
 PROXY = os.environ.get("HTTP_PROXY", None)
 HTTP_TIMEOUT = int(os.environ.get("HTTP_TIMEOUT", "30"))
 MAX_WORKERS = int(os.environ.get("MAX_WORKERS", "12"))
