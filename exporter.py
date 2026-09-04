@@ -27,6 +27,8 @@ from config import (
     ANYMARKET_DB_USER,
     ANYMARKET_DB_PASSWORD,
     ANYMARKET_DB_SSLMODE,
+    GUMGA_TOKEN,
+    ANYMARKET_PLATFORM,
 )
 from import_parser import ImportRow
 
@@ -750,14 +752,55 @@ def _resolve_mlbs_via_ml_api(mlbs: list[str], token: str) -> dict[str, dict]:
     return sku_map
 
 
+def _fetch_anymarket_fields_by_skus(
+    skus: list[str],
+    gumga_token: str,
+    any_platform: str | None,
+    progress_callback=None,
+) -> dict[str, dict]:
+    """Busca o produto AnyMarket pela API v2, filtrando só pelo SKU (partnerId)."""
+    unique = list(dict.fromkeys(s.strip() for s in skus if s and str(s).strip() and not _is_mlb(s)))
+    out: dict[str, dict] = {}
+    if not unique or not (gumga_token or "").strip():
+        return out
+
+    gumga = gumga_token.strip()
+    total = len(unique)
+    completed = 0
+    lock = threading.Lock()
+
+    def _one(sku: str) -> tuple[str, dict]:
+        try:
+            product = find_product_by_partner_id(sku, gumga, any_platform)
+        except (PermissionError, Exception):
+            product = {}
+        fields = extract_anymarket_fields(product, sku_hint=sku) if product else extract_anymarket_fields({})
+        return sku, fields
+
+    with ThreadPoolExecutor(max_workers=min(len(unique), MAX_WORKERS)) as pool:
+        futures = [pool.submit(_one, s) for s in unique]
+        for fut in as_completed(futures):
+            sku, fields = fut.result()
+            with lock:
+                out[sku] = fields
+                completed += 1
+                if progress_callback:
+                    pct = int(88 + (completed / total) * 8)
+                    progress_callback(min(pct, 96), 100, f"AnyMarket: {completed}/{total} SKU(s)...")
+    return out
+
+
 def process_skus_for_catalog_audit(
     sku_list: list[str],
     token: str,
     progress_callback=None,
+    gumga_token: str | None = None,
+    any_platform: str | None = None,
 ) -> dict:
     """
     Recebe uma lista de SKUs, consulta a réplica do AnyMarket para identificar os MLBs
     de Catálogo e Tradicional, baixa os detalhes live da API do Mercado Livre e gera a auditoria.
+    Também busca o cadastro AnyMarket pelo SKU (partnerId) para o terceiro quadro.
     """
     skus = [s.strip() for s in sku_list if s.strip()]
     seen = set()
@@ -779,6 +822,8 @@ def process_skus_for_catalog_audit(
     mlb_inputs = [s.upper() for s in skus_clean if _is_mlb(s)]
     # (rótulo exibido, sku usado na busca)
     input_rows: list[tuple[str, str]] = [(s, s) for s in sku_inputs]
+    gumga = (gumga_token if gumga_token is not None else GUMGA_TOKEN) or ""
+    platform = (any_platform or ANYMARKET_PLATFORM or "SELETA").strip()
 
     if progress_callback:
         progress_callback(10, 100, f"Mapeando anúncios de {total_skus} entrada(s)...")
@@ -876,13 +921,35 @@ def process_skus_for_catalog_audit(
     elif sku_inputs and not user_id and not db_map:
         errors.append("[MERCADO LIVRE] Token inválido ou expirado — fallback por seller_sku indisponível.")
 
+    any_by_sku: dict[str, dict] = {}
+    lookup_skus_for_any = [lookup for _, lookup in input_rows if not _is_mlb(lookup)]
+    if gumga.strip() and lookup_skus_for_any:
+        if progress_callback:
+            progress_callback(88, 100, "Buscando cadastro AnyMarket por SKU...")
+        any_by_sku = _fetch_anymarket_fields_by_skus(
+            lookup_skus_for_any, gumga.strip(), platform, progress_callback
+        )
+        missing_any = [s for s in lookup_skus_for_any if not (any_by_sku.get(s) or {}).get("any_id")]
+        if missing_any:
+            preview = ", ".join(missing_any[:8])
+            extra = f" (+{len(missing_any) - 8})" if len(missing_any) > 8 else ""
+            errors.append(f"[ANYMARKET] SKU(s) sem cadastro na API: {preview}{extra}")
+    elif lookup_skus_for_any:
+        errors.append("[ANYMARKET] Token Gumga ausente (GUMGA_TOKEN) — quadro AnyMarket vazio.")
+
+    def _any_for(lookup: str) -> dict | None:
+        fields = any_by_sku.get(lookup)
+        if fields and (fields.get("any_id") or fields.get("title") or fields.get("sku")):
+            return fields
+        return None
+
     for input_label, lookup_sku in input_rows:
         d = db_map.get(lookup_sku, {"cat": [], "trad": []})
         cats = d.get("cat", [])
         trads = d.get("trad", [])
 
         if not cats and not trads:
-            item = build_catalog_audit_item(lookup_sku, None, None)
+            item = build_catalog_audit_item(lookup_sku, None, None, _any_for(lookup_sku))
             if _is_mlb(input_label):
                 item["sku"] = lookup_sku if lookup_sku != input_label else input_label
                 item["summary"] = (
@@ -927,7 +994,7 @@ def process_skus_for_catalog_audit(
                 cat_mlb = input_label
                 cat_prod = ml_fields_by_mlb.get(cat_mlb)
 
-            audit_item = build_catalog_audit_item(lookup_sku, cat_prod, trad_prod)
+            audit_item = build_catalog_audit_item(lookup_sku, cat_prod, trad_prod, _any_for(lookup_sku))
             audit_item["input_mlb"] = input_label
             if input_label != lookup_sku:
                 audit_item["summary"] = f"Entrada MLB {input_label} → SKU {lookup_sku}. {audit_item.get('summary', '')}"
@@ -947,7 +1014,7 @@ def process_skus_for_catalog_audit(
                 for cat_entry in cats:
                     cat_mlb = cat_entry[0]
                     cat_prod = ml_fields_by_mlb.get(cat_mlb)
-                    audit_item = build_catalog_audit_item(lookup_sku, cat_prod, trad_prod)
+                    audit_item = build_catalog_audit_item(lookup_sku, cat_prod, trad_prod, _any_for(lookup_sku))
                     st = audit_item.get("status_geral")
                     if st == "OK":
                         count_ok += 1
@@ -960,7 +1027,7 @@ def process_skus_for_catalog_audit(
                     items.append(audit_item)
             else:
                 # Sem catálogo, apenas tradicional
-                audit_item = build_catalog_audit_item(lookup_sku, None, trad_prod)
+                audit_item = build_catalog_audit_item(lookup_sku, None, trad_prod, _any_for(lookup_sku))
                 st = audit_item.get("status_geral")
                 if st == "OK":
                     count_ok += 1

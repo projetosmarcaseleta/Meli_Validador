@@ -391,7 +391,12 @@ def api_audit():
 
         print(f"[AUDIT CATÁLOGO] {len(sku_list)} SKUs")
         try:
-            result = process_skus_for_catalog_audit(sku_list, token)
+            result = process_skus_for_catalog_audit(
+                sku_list,
+                token,
+                gumga_token=gumga_token,
+                any_platform=any_platform,
+            )
             return jsonify({
                 "success": True,
                 "mode": "catalog",

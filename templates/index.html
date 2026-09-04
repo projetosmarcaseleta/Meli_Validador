@@ -44,6 +44,8 @@
       flex-direction: column;
       align-items: center;
       font-size: 13px;
+      width: 100%;
+      overflow-x: hidden;
     }
 
     /* Custom Slim Scrollbars */
@@ -55,12 +57,14 @@
     /* ── TOPBAR ── */
     .topbar {
       width: 100%;
-      max-width: 1200px;
+      max-width: 1680px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       padding: 16px 20px 0;
       z-index: 10;
+      flex-wrap: wrap;
+      gap: 8px;
     }
 
     .brand {
@@ -195,9 +199,11 @@
     .input-row {
       display: flex;
       gap: 8px;
+      flex-wrap: wrap;
     }
 
-    .input-row input { flex: 1; }
+    .input-row input { flex: 1 1 220px; min-width: 0; }
+    .input-row .btn-verify { flex: 0 0 auto; }
 
     input[type="text"], textarea {
       font-family: 'Inter', sans-serif;
@@ -423,7 +429,7 @@
     #view-audit {
       display: none;
       width: 100%;
-      max-width: 1200px;
+      max-width: 1680px;
     }
 
     /* Top Stats & Filters */
@@ -485,6 +491,9 @@
     .search-box {
       position: relative;
       width: 170px;
+      min-width: 0;
+      flex: 1 1 160px;
+      max-width: 280px;
     }
 
     .search-box input {
@@ -533,7 +542,7 @@
     .audit-workspace {
       width: 100%;
       display: grid;
-      grid-template-columns: 280px 1fr;
+      grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
       gap: 14px;
       align-items: start;
     }
@@ -739,6 +748,11 @@
       border: 1px solid var(--border);
     }
 
+    .decision-group-after-table {
+      margin-top: 14px;
+      width: fit-content;
+    }
+
     .btn-decision {
       font-family: 'Inter', sans-serif;
       font-size: 11.5px;
@@ -794,6 +808,7 @@
       display: flex;
       align-items: center;
       gap: 6px;
+      flex-wrap: wrap;
     }
 
     .btn-link-ml {
@@ -1002,11 +1017,13 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
     .photos-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px;
     }
 
@@ -1025,6 +1042,8 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
+      gap: 6px;
+      flex-wrap: wrap;
     }
 
     .platform-tag {
@@ -1049,6 +1068,12 @@
       border: 1px solid rgba(56,189,248,.25);
     }
 
+    .platform-tag.any {
+      background: rgba(52,211,153,.15);
+      color: #6EE7B7;
+      border: 1px solid rgba(52,211,153,.28);
+    }
+
     .photo-counter {
       font-size: 10.5px;
       color: var(--text-3);
@@ -1057,7 +1082,7 @@
 
     .photo-preview-wrap {
       width: 100%;
-      height: 180px;
+      height: clamp(140px, 18vw, 200px);
       border-radius: var(--r-sm);
       background: #0B0B12;
       border: 1px solid var(--border);
@@ -1126,13 +1151,15 @@
     /* ── ATTRIBUTES TABLE ── */
     .table-wrap {
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
       border-radius: var(--r-sm);
       border: 1px solid var(--border);
-      max-height: 360px;
+      max-height: min(420px, 55vh);
     }
 
     .diff-table {
       width: 100%;
+      min-width: 760px;
       border-collapse: collapse;
       font-size: 11.5px;
       text-align: left;
@@ -1154,6 +1181,7 @@
 
     .diff-table th.col-cat { color: #FEF08A; }
     .diff-table th.col-trad { color: #BAE6FD; }
+    .diff-table th.col-any { color: #6EE7B7; }
 
     .diff-table td {
       padding: 6px 10px;
@@ -1168,6 +1196,10 @@
       background: rgba(251,113,133,.05);
     }
 
+    .diff-table tr.row-diff .cell-field { background: #1a1218; }
+    .diff-table tr.row-title-ok .cell-field { background: #121820; }
+    .diff-table tr:hover:not(.row-diff):not(.row-title-ok) .cell-field { background: var(--surface-2); }
+
     .diff-table tr.row-diff:hover {
       background: rgba(251,113,133,.09);
     }
@@ -1180,6 +1212,17 @@
       font-weight: 600;
       color: var(--text);
       width: 120px;
+      min-width: 110px;
+      position: sticky;
+      left: 0;
+      background: var(--surface);
+      z-index: 1;
+    }
+
+    .diff-table th:first-child {
+      position: sticky;
+      left: 0;
+      z-index: 3;
     }
 
     .cell-val {
@@ -1271,10 +1314,47 @@
       background: var(--blue);
     }
 
-    @media (max-width: 900px) {
+    @media (max-width: 1280px) {
+      .audit-workspace { grid-template-columns: minmax(200px, 240px) minmax(0, 1fr); }
+      .hero h1 { font-size: 24px; }
+    }
+
+    @media (max-width: 1024px) {
       .audit-workspace { grid-template-columns: 1fr; }
-      .audit-sidebar { position: static; max-height: 240px; }
+      .audit-sidebar {
+        position: static;
+        max-height: 220px;
+      }
+    }
+
+    @media (max-width: 720px) {
       .photos-grid { grid-template-columns: 1fr; }
+      .photo-preview-wrap { height: 200px; }
+    }
+
+    @media (max-width: 900px) {
+      .topbar, .view-container { padding-left: 12px; padding-right: 12px; }
+      .actions-grid { grid-template-columns: 1fr; }
+      .hero { padding: 16px 0 12px; }
+      .hero h1 { font-size: 22px; }
+      .card { padding: 18px 16px; }
+      .topbar-badge { display: none; }
+      .decision-group { flex-wrap: wrap; width: 100%; justify-content: stretch; }
+      .btn-decision { flex: 1 1 auto; justify-content: center; }
+      .detail-nav-card { padding: 10px; }
+      .search-box { max-width: none; flex: 1 1 100%; width: 100%; }
+      .audit-tools { width: 100%; }
+      .btn-icon-text { flex: 1 1 auto; justify-content: center; }
+    }
+
+    @media (max-width: 640px) {
+      body { font-size: 12px; }
+      .brand-name { font-size: 13px; }
+      .input-row .btn-verify { flex: 1 1 calc(50% - 8px); }
+      .diff-table { min-width: 680px; font-size: 11px; }
+      .diff-table th, .diff-table td { padding: 6px 8px; }
+      .lightbox-img { max-width: 94vw; max-height: 70vh; }
+      .item-mlbs-preview { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     }
   </style>
 </head>
@@ -1480,13 +1560,13 @@
 
           <!-- Decision Buttons -->
           <div class="decision-group">
-            <button id="btn-dec-approve" class="btn-decision btn-approve" type="button" title="Atalho: Tecla 'A' ou '1'">
+            <button id="btn-dec-approve" class="btn-decision btn-approve" type="button" data-decision-action="approve" title="Atalho: Tecla 'A' ou '1'">
               ✅ Aprovar <span style="opacity:.6; font-size:10px;">(A)</span>
             </button>
-            <button id="btn-dec-reject" class="btn-decision btn-reject" type="button" title="Atalho: Tecla 'R' ou '2'">
+            <button id="btn-dec-reject" class="btn-decision btn-reject" type="button" data-decision-action="reject" title="Atalho: Tecla 'R' ou '2'">
               ❌ Reprovar <span style="opacity:.6; font-size:10px;">(R)</span>
             </button>
-            <button id="btn-dec-pending" class="btn-decision btn-pending" type="button" title="Atalho: Tecla 'P'">
+            <button id="btn-dec-pending" class="btn-decision btn-pending" type="button" data-decision-action="pending" title="Atalho: Tecla 'P'">
               ⏳ Pendente
             </button>
           </div>
@@ -1567,6 +1647,19 @@
               </div>
               <div id="trad-thumbs" class="thumbs-strip"></div>
             </div>
+
+            <!-- AnyMarket Photos -->
+            <div class="photo-col">
+              <div class="photo-col-header">
+                <span class="platform-tag any">🛒 AnyMarket</span>
+                <span id="any-photo-count" class="photo-counter">0 fotos</span>
+              </div>
+              <div class="photo-preview-wrap" id="any-preview-wrap">
+                <img id="any-main-img" src="" alt="AnyMarket" />
+                <div class="photo-preview-overlay">🔍 Zoom</div>
+              </div>
+              <div id="any-thumbs" class="thumbs-strip"></div>
+            </div>
           </div>
         </div>
 
@@ -1583,11 +1676,21 @@
                   <th>Campo</th>
                   <th class="col-cat">🏷️ Anúncio de Catálogo</th>
                   <th class="col-trad">📦 Anúncio Tradicional (Sem Catálogo)</th>
+                  <th class="col-any">🛒 AnyMarket (SKU)</th>
                   <th style="text-align:center">Status</th>
                 </tr>
               </thead>
               <tbody id="attributes-table-body"></tbody>
             </table>
+          </div>
+
+          <div class="decision-group decision-group-after-table">
+            <button id="btn-dec-approve-bottom" class="btn-decision btn-approve" type="button" data-decision-action="approve" title="Atalho: Tecla 'A' ou '1'">
+              ✅ Aprovar <span style="opacity:.6; font-size:10px;">(A)</span>
+            </button>
+            <button id="btn-dec-reject-bottom" class="btn-decision btn-reject" type="button" data-decision-action="reject" title="Atalho: Tecla 'R' ou '2'">
+              ❌ Reprovar <span style="opacity:.6; font-size:10px;">(R)</span>
+            </button>
           </div>
         </div>
 
@@ -1600,7 +1703,7 @@
 
   <!-- ── GOOGLE SHEETS SYNC MODAL ── -->
   <div id="modal-sheets" class="lightbox-modal">
-    <div class="lightbox-content" style="max-width:620px; width:92%; background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:22px; text-align:left; box-shadow: 0 10px 40px rgba(0,0,0,.7); position:relative;">
+    <div class="lightbox-content" style="max-width:min(620px, 94vw); width:92%; background:var(--surface); border:1px solid var(--border); border-radius:var(--r); padding:22px; text-align:left; box-shadow: 0 10px 40px rgba(0,0,0,.7); position:relative;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; border-bottom:1px solid var(--border); padding-bottom:12px;">
         <h3 style="margin:0; font-size:15px; color:#fff; display:flex; align-items:center; gap:8px;">
           📊 Conectar Google Planilha
@@ -2132,14 +2235,26 @@
   }
 
   function updateDecisionButtonsUI(decision) {
-    $('btn-dec-approve').classList.toggle('active', decision === 'APROVADO');
-    $('btn-dec-reject').classList.toggle('active', decision === 'REPROVADO');
-    $('btn-dec-pending').classList.toggle('active', decision === 'PENDENTE');
+    document.querySelectorAll('[data-decision-action="approve"]').forEach(btn => {
+      btn.classList.toggle('active', decision === 'APROVADO');
+    });
+    document.querySelectorAll('[data-decision-action="reject"]').forEach(btn => {
+      btn.classList.toggle('active', decision === 'REPROVADO');
+    });
+    document.querySelectorAll('[data-decision-action="pending"]').forEach(btn => {
+      btn.classList.toggle('active', decision === 'PENDENTE');
+    });
   }
 
-  $('btn-dec-approve').addEventListener('click', () => handleApprove(true));
-  $('btn-dec-reject').addEventListener('click', () => setDecision('REPROVADO', true));
-  $('btn-dec-pending').addEventListener('click', () => setDecision('PENDENTE', false));
+  document.querySelectorAll('[data-decision-action="approve"]').forEach(btn => {
+    btn.addEventListener('click', () => handleApprove(true));
+  });
+  document.querySelectorAll('[data-decision-action="reject"]').forEach(btn => {
+    btn.addEventListener('click', () => setDecision('REPROVADO', true));
+  });
+  document.querySelectorAll('[data-decision-action="pending"]').forEach(btn => {
+    btn.addEventListener('click', () => setDecision('PENDENTE', false));
+  });
 
   // ── EXPORT EXCEL ──
   const exportButtonIds = ['btn-export', 'btn-export-all-audit', 'btn-export-approved', 'btn-export-rejected'];
@@ -2623,14 +2738,18 @@
   function renderPhotos(item) {
     const catImgs = item.ml?.images_list || (item.ml?.image_main ? [item.ml.image_main] : []);
     const tradImgs = item.any?.images_list || (item.any?.image_main ? [item.any.image_main] : []);
+    const anyImgs = item.anymarket?.images_list || (item.anymarket?.image_main ? [item.anymarket.image_main] : []);
 
     $('cat-photo-count').textContent = `${catImgs.length} foto(s)`;
     $('trad-photo-count').textContent = `${tradImgs.length} foto(s)`;
+    $('any-photo-count').textContent = `${anyImgs.length} foto(s)`;
 
     const photoTag = $('photo-summary-tag');
-    if (catImgs.length !== tradImgs.length) {
+    const counts = [catImgs.length, tradImgs.length, anyImgs.length];
+    const uniqueCounts = new Set(counts);
+    if (uniqueCounts.size > 1) {
       photoTag.className = 'badge diff';
-      photoTag.textContent = `Qtd Diferente (${catImgs.length} vs ${tradImgs.length})`;
+      photoTag.textContent = `Qtd Diferente (${catImgs.length} vs ${tradImgs.length} vs ${anyImgs.length})`;
     } else {
       photoTag.className = 'badge ok';
       photoTag.textContent = `Mesma Quantidade (${catImgs.length})`;
@@ -2687,6 +2806,32 @@
       tradMainImg.style.display = 'none';
       tradThumbs.innerHTML = '<span style="font-size:10.5px;color:var(--text-3)">Sem anúncio tradicional</span>';
     }
+
+    // AnyMarket Photos
+    const anyMainImg = $('any-main-img');
+    const anyThumbs = $('any-thumbs');
+    anyThumbs.innerHTML = '';
+
+    if (anyImgs.length > 0) {
+      anyMainImg.src = anyImgs[0];
+      anyMainImg.style.display = 'block';
+      $('any-preview-wrap').onclick = () => openLightbox(anyMainImg.src, `AnyMarket · SKU ${item.sku}`);
+
+      anyImgs.forEach((url, i) => {
+        const btn = document.createElement('button');
+        btn.className = `thumb-btn ${i === 0 ? 'active' : ''}`;
+        btn.innerHTML = `<img src="${url}" alt="" />`;
+        btn.onclick = () => {
+          anyMainImg.src = url;
+          anyThumbs.querySelectorAll('.thumb-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+        };
+        anyThumbs.appendChild(btn);
+      });
+    } else {
+      anyMainImg.style.display = 'none';
+      anyThumbs.innerHTML = '<span style="font-size:10.5px;color:var(--text-3)">SKU não encontrado no AnyMarket</span>';
+    }
   }
 
   function renderAttributesTable(item) {
@@ -2696,10 +2841,11 @@
     // Header MLBs row
     const mlbTr = document.createElement('tr');
     mlbTr.innerHTML = `
-      <td class="cell-field">Código MLB</td>
+      <td class="cell-field">Código MLB / ID</td>
       <td class="cell-val"><strong>${escapeHtml(item.mlb_cat || '—')}</strong></td>
       <td class="cell-val"><strong>${escapeHtml(item.mlb_trad || '—')}</strong></td>
-      <td class="cell-status"><span class="badge info">MLB</span></td>
+      <td class="cell-val"><strong>${escapeHtml(item.anymarket?.any_id || item.sku || '—')}</strong></td>
+      <td class="cell-status"><span class="badge info">ID</span></td>
     `;
     tbody.appendChild(mlbTr);
 
@@ -2717,41 +2863,48 @@
 
       const isTitleDiff = c.key === 'title' && c.status === 'DIVERGENTE';
       const isDiff = c.status === 'DIVERGENTE' && !isTitleDiff;
+      const isAnyDiff = c.status_any === 'DIVERGENTE' && c.key !== 'title';
       const tr = document.createElement('tr');
-      if (isTitleDiff && onlyTitleDiff) {
+      if (isTitleDiff && onlyTitleDiff && !isAnyDiff) {
         tr.className = 'row-title-ok';
-      } else if (isDiff || aiFlags[aiKeyMap[c.key]]) {
-        tr.className = isDiff ? 'row-diff' : 'row-ai-flag';
+      } else if (isDiff || isAnyDiff || aiFlags[aiKeyMap[c.key]]) {
+        tr.className = (isDiff || isAnyDiff) ? 'row-diff' : 'row-ai-flag';
       }
 
       let statusBadge = '<span class="badge ok">OK</span>';
-      if (isTitleDiff && onlyTitleDiff) {
+      if (isTitleDiff && onlyTitleDiff && c.status_any !== 'DIVERGENTE') {
         statusBadge = '<span class="badge ok-blue" title="Somente título diferente — indiferente para aprovação">OK</span>';
-      } else if (c.status === 'DIVERGENTE') statusBadge = '<span class="badge diff">Diff</span>';
+      } else if (c.status === 'DIVERGENTE' || c.status_any === 'DIVERGENTE') statusBadge = '<span class="badge diff">Diff</span>';
       else if (c.status === 'AUSENTE_CAT') statusBadge = '<span class="badge warn">Aus. Cat</span>';
       else if (c.status === 'AUSENTE_TRAD') statusBadge = '<span class="badge warn">Aus. Trad</span>';
-      else if (c.status === 'AMBOS_VAZIOS') statusBadge = '<span class="badge info">Vazio</span>';
+      else if (c.status_any === 'AUSENTE_ANY') statusBadge = '<span class="badge info">Aus. Any</span>';
+      else if (c.status === 'AMBOS_VAZIOS' && (c.status_any === 'AMBOS_VAZIOS' || c.status_any === 'AUSENTE_ANY')) statusBadge = '<span class="badge info">Vazio</span>';
 
       let catVal = c.ml_value || '—';
       let tradVal = c.any_value || '—';
+      let anyVal = c.any_mkt_value || '—';
 
       if (c.key === 'price') {
         if (catVal && catVal !== '—') catVal = 'R$ ' + catVal;
         if (tradVal && tradVal !== '—') tradVal = 'R$ ' + tradVal;
+        if (anyVal && anyVal !== '—') anyVal = 'R$ ' + anyVal;
       }
 
       if (c.key === 'description') {
         catVal = `<div style="max-height:50px; overflow-y:auto; font-size:11px;">${escapeHtml(catVal)}</div>`;
         tradVal = `<div style="max-height:50px; overflow-y:auto; font-size:11px;">${escapeHtml(tradVal)}</div>`;
+        anyVal = `<div style="max-height:50px; overflow-y:auto; font-size:11px;">${escapeHtml(anyVal)}</div>`;
       } else {
         catVal = escapeHtml(catVal);
         tradVal = escapeHtml(tradVal);
+        anyVal = escapeHtml(anyVal);
       }
 
       tr.innerHTML = `
         <td class="cell-field">${escapeHtml(c.label || c.key)}</td>
         <td class="cell-val">${catVal}</td>
         <td class="cell-val">${tradVal}</td>
+        <td class="cell-val">${anyVal}</td>
         <td class="cell-status">${statusBadge}</td>
       `;
       tbody.appendChild(tr);

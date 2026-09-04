@@ -29,6 +29,27 @@ def test_build_catalog_audit_item_missing_catalog():
     assert item["status_geral"] == "ATENCAO"
 
 
+def test_build_catalog_audit_item_includes_anymarket_by_sku():
+    cat = {"mlb": "MLB1", "title": "Lavadora 127V", "brand": "Brastemp", "voltage": "127V", "ean": "123"}
+    trad = {"mlb": "MLB2", "title": "Lavadora 110V", "brand": "Brastemp", "voltage": "110V", "ean": "123"}
+    any_mkt = {
+        "any_id": "999",
+        "sku": "238601800",
+        "title": "Lavadora Any",
+        "brand": "Brastemp",
+        "voltage": "127V",
+        "ean": "123",
+        "images_list": ["https://example.com/a.jpg"],
+    }
+    item = compare.build_catalog_audit_item("238601800", cat, trad, any_mkt)
+    assert item["anymarket"]["any_id"] == "999"
+    voltage = next(c for c in item["comparison"] if c["key"] == "voltage")
+    assert voltage["any_mkt_value"] == "127V"
+    assert voltage["any_value"] == "110V"
+    assert voltage["status"] == "DIVERGENTE"
+    assert any("VOLTAGEM" in d or "AnyMarket" in d for d in item["divergences"])
+
+
 @patch("exporter.validate_token")
 @patch("exporter._resolve_skus_from_anymarket_db")
 @patch("exporter.get_products_batch")
@@ -63,7 +84,7 @@ def test_process_skus_for_catalog_audit_multiple_catalogs(mock_get_batch, mock_d
         "MLB7520745830": fake_prod("MLB7520745830", False),
     }
 
-    res = exporter.process_skus_for_catalog_audit(["241686700"], "FAKE_TOKEN")
+    res = exporter.process_skus_for_catalog_audit(["241686700"], "FAKE_TOKEN", gumga_token="")
     items = res.get("items", [])
     
     # Deve gerar 2 itens de auditoria para o mesmo SKU!

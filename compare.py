@@ -278,14 +278,25 @@ CATALOG_COMPARE_FIELDS: list[tuple[str, str]] = [
 ]
 
 
-def build_catalog_audit_item(sku: str, cat_item: dict | None, trad_item: dict | None) -> dict:
+def _empty_anymarket() -> dict:
+    return {"images_list": []}
+
+
+def build_catalog_audit_item(
+    sku: str,
+    cat_item: dict | None,
+    trad_item: dict | None,
+    any_item: dict | None = None,
+) -> dict:
     cat = cat_item or {}
     trad = trad_item or {}
+    any_mkt = any_item or _empty_anymarket()
     divergences: list[str] = []
     field_comparisons: list[dict] = []
 
     has_cat = bool(cat_item)
     has_trad = bool(trad_item)
+    has_any = bool(any_item and (any_item.get("any_id") or any_item.get("title") or any_item.get("sku")))
 
     if not has_cat and not has_trad:
         return {
@@ -300,6 +311,7 @@ def build_catalog_audit_item(sku: str, cat_item: dict | None, trad_item: dict | 
             "divergences": ["Anúncio não encontrado no ML"],
             "ml": {"images_list": []},
             "any": {"images_list": []},
+            "anymarket": any_mkt,
             "comparison": [],
         }
 
@@ -311,7 +323,12 @@ def build_catalog_audit_item(sku: str, cat_item: dict | None, trad_item: dict | 
     for key, label in CATALOG_COMPARE_FIELDS:
         cat_val = str(cat.get(key, "") or "")
         trad_val = str(trad.get(key, "") or "")
+        any_val = str(any_mkt.get(key, "") or "") if has_any else ""
         status = match_values(cat_val, trad_val) if (has_cat and has_trad) else ("AUSENTE_CAT" if not has_cat else "AUSENTE_TRAD")
+        status_any = "AUSENTE_ANY"
+        if has_any:
+            ref = cat_val or trad_val
+            status_any = match_values(ref, any_val) if ref or any_val else "AMBOS_VAZIOS"
 
         if has_cat and has_trad and status not in ("OK", "AMBOS_VAZIOS") and key != "title":
             if key == "image_count":
@@ -330,12 +347,22 @@ def build_catalog_audit_item(sku: str, cat_item: dict | None, trad_item: dict | 
                 diff = f"{label}: Catálogo='{cat_val[:40]}' ≠ Tradicional='{trad_val[:40]}'"
             divergences.append(diff)
 
+        if has_any and status_any not in ("OK", "AMBOS_VAZIOS", "AUSENTE_ML") and key != "title":
+            ref_label = "Catálogo" if cat_val else "Tradicional"
+            ref_val = cat_val or trad_val
+            if key == "image_count":
+                divergences.append(f"Qtd Fotos: {ref_label} ({ref_val}) ≠ AnyMarket ({any_val})")
+            else:
+                divergences.append(f"{label}: {ref_label}='{ref_val[:40]}' ≠ AnyMarket='{any_val[:40]}'")
+
         field_comparisons.append({
             "key": key,
             "label": label,
             "ml_value": cat_val,
             "any_value": trad_val,
+            "any_mkt_value": any_val,
             "status": status,
+            "status_any": status_any,
         })
 
     if not has_cat or not has_trad:
@@ -346,9 +373,9 @@ def build_catalog_audit_item(sku: str, cat_item: dict | None, trad_item: dict | 
         summary = " | ".join(divergences)
     else:
         status_geral = "OK"
-        summary = "Catálogo e Tradicional 100% iguais"
+        summary = "Catálogo, Tradicional e AnyMarket 100% iguais" if has_any else "Catálogo e Tradicional 100% iguais"
 
-    main_title = trad.get("title") or cat.get("title") or f"SKU {sku}"
+    main_title = trad.get("title") or cat.get("title") or any_mkt.get("title") or f"SKU {sku}"
     main_mlb = trad.get("mlb") or cat.get("mlb") or ""
     cat_mlb = cat.get("mlb", "")
     trad_mlb = trad.get("mlb", "")
@@ -366,5 +393,6 @@ def build_catalog_audit_item(sku: str, cat_item: dict | None, trad_item: dict | 
         "divergences": divergences,
         "ml": cat,
         "any": trad,
+        "anymarket": any_mkt,
         "comparison": field_comparisons,
     }

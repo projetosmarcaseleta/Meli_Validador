@@ -431,6 +431,7 @@ def extract_anymarket_fields(product: dict, sku_hint: str = "") -> dict[str, str
     stock = ""
     ean = ""
     any_sku_id = ""
+    sku_title = ""
     if selected_sku:
         any_sku_id = str(selected_sku.get("id") or "")
         sell = selected_sku.get("sellPrice")
@@ -440,6 +441,12 @@ def extract_anymarket_fields(product: dict, sku_hint: str = "") -> dict[str, str
         if amount is not None:
             stock = str(amount)
         ean = str(selected_sku.get("ean") or "")
+        sku_title = str(
+            selected_sku.get("title")
+            or selected_sku.get("name")
+            or selected_sku.get("skuTitle")
+            or ""
+        ).strip()
 
     description = str(product.get("description") or "").strip()
     if len(description) > 500:
@@ -450,7 +457,7 @@ def extract_anymarket_fields(product: dict, sku_hint: str = "") -> dict[str, str
         "any_sku_id": any_sku_id,
         "any_sku": " | ".join(partner_ids),
         "sku": " | ".join(partner_ids),
-        "title": str(product.get("title") or "").strip(),
+        "title": sku_title or str(product.get("title") or "").strip(),
         "description": description,
         "brand": str(brand).strip(),
         "model": str(product.get("model") or "").strip(),
