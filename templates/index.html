@@ -833,6 +833,11 @@
       border: 1px solid rgba(56,189,248,.3);
       color: #BAE6FD;
     }
+    .btn-link-ml.any {
+      background: rgba(251,146,60,.15);
+      border: 1px solid rgba(251,146,60,.35);
+      color: #FDBA74;
+    }
 
     /* ── DIAGNOSTIC CHIPS BOX ── */
     .diag-box {
@@ -1578,6 +1583,9 @@
             <a id="link-ml-trad" class="btn-link-ml trad" href="#" target="_blank" rel="noopener">
               Ver Tradicional ↗
             </a>
+            <a id="link-any-product" class="btn-link-ml any" href="#" target="_blank" rel="noopener">
+              Ver AnyMarket ↗
+            </a>
           </div>
         </div>
 
@@ -1990,6 +1998,11 @@
         resultEl.className = 'token-status err';
         resultEl.textContent = 'Nenhum SKU encontrado no Mercado Livre.';
         return;
+      }
+
+      const warnings = data.warnings || [];
+      if (warnings.length) {
+        showToast(warnings.slice(0, 3).map(w => escapeHtml(w)).join('<br>'), 'warn');
       }
 
   auditDecisions = {};
@@ -2468,12 +2481,21 @@
   }
 
   const COMPARISON_SKIP_KEYS = new Set(['image_count', 'images', 'image_main']);
+  const INFORMATIONAL_KEYS = new Set([
+    'title', 'description', 'category', 'price', 'stock',
+    'listing_type', 'shipping_type', 'status',
+    'height', 'width', 'length', 'weight',
+  ]);
+
+  function isInformationalKey(key) {
+    return INFORMATIONAL_KEYS.has(key) || (key && String(key).startsWith('extra:'));
+  }
 
   function isOnlyTitleDiff(item) {
     const comparisons = item.comparison || [];
     const hasTitleDiff = comparisons.some(c => c.key === 'title' && c.status === 'DIVERGENTE');
     const hasOtherDiff = comparisons.some(c =>
-      c.status === 'DIVERGENTE' && c.key !== 'title' && !COMPARISON_SKIP_KEYS.has(c.key)
+      c.status === 'DIVERGENTE' && !isInformationalKey(c.key) && !COMPARISON_SKIP_KEYS.has(c.key)
     );
     return hasTitleDiff && !hasOtherDiff;
   }
@@ -2551,6 +2573,21 @@
       linkTrad.title = `Abrir anúncio tradicional no Mercado Livre: ${tradUrl}`;
     } else {
       linkTrad.style.display = 'none';
+    }
+
+    const linkAny = $('link-any-product');
+    const anyId = String(item.anymarket?.any_id || '').replace(/\D/g, '');
+    if (linkAny) {
+      if (anyId) {
+        const anyUrl = `https://app.anymarket.com.br/app-js/products/edit/${anyId}`;
+        linkAny.href = anyUrl;
+        linkAny.style.display = 'inline-flex';
+        linkAny.textContent = `AnyMarket (${anyId}) ↗`;
+        linkAny.title = `Abrir produto no AnyMarket: ${anyUrl}`;
+      } else {
+        linkAny.style.display = 'none';
+        linkAny.href = '#';
+      }
     }
 
     // Diagnostic banner
@@ -2828,6 +2865,9 @@
         };
         anyThumbs.appendChild(btn);
       });
+    } else if (item.anymarket && (item.anymarket.any_id || item.anymarket.title)) {
+      anyMainImg.style.display = 'none';
+      anyThumbs.innerHTML = '<span style="font-size:10.5px;color:var(--text-3)">Cadastro AnyMarket sem fotos</span>';
     } else {
       anyMainImg.style.display = 'none';
       anyThumbs.innerHTML = '<span style="font-size:10.5px;color:var(--text-3)">SKU não encontrado no AnyMarket</span>';
@@ -2844,7 +2884,7 @@
       <td class="cell-field">Código MLB / ID</td>
       <td class="cell-val"><strong>${escapeHtml(item.mlb_cat || '—')}</strong></td>
       <td class="cell-val"><strong>${escapeHtml(item.mlb_trad || '—')}</strong></td>
-      <td class="cell-val"><strong>${escapeHtml(item.anymarket?.any_id || item.sku || '—')}</strong></td>
+      <td class="cell-val"><strong>${escapeHtml(item.anymarket?.any_id || '—')}</strong></td>
       <td class="cell-status"><span class="badge info">ID</span></td>
     `;
     tbody.appendChild(mlbTr);
@@ -2862,8 +2902,9 @@
       if (c.key === 'image_count' || c.key === 'images' || c.key === 'image_main') return;
 
       const isTitleDiff = c.key === 'title' && c.status === 'DIVERGENTE';
+      const isSoftKey = isInformationalKey(c.key);
       const isDiff = c.status === 'DIVERGENTE' && !isTitleDiff;
-      const isAnyDiff = c.status_any === 'DIVERGENTE' && c.key !== 'title';
+      const isAnyDiff = c.status_any === 'DIVERGENTE' && !isSoftKey;
       const tr = document.createElement('tr');
       if (isTitleDiff && onlyTitleDiff && !isAnyDiff) {
         tr.className = 'row-title-ok';
@@ -2890,10 +2931,10 @@
         if (anyVal && anyVal !== '—') anyVal = 'R$ ' + anyVal;
       }
 
-      if (c.key === 'description') {
-        catVal = `<div style="max-height:50px; overflow-y:auto; font-size:11px;">${escapeHtml(catVal)}</div>`;
-        tradVal = `<div style="max-height:50px; overflow-y:auto; font-size:11px;">${escapeHtml(tradVal)}</div>`;
-        anyVal = `<div style="max-height:50px; overflow-y:auto; font-size:11px;">${escapeHtml(anyVal)}</div>`;
+      if (c.key === 'description' || String(catVal).length > 180 || String(tradVal).length > 180 || String(anyVal).length > 180) {
+        catVal = `<div style="max-height:120px; overflow-y:auto; font-size:11px; white-space:pre-wrap;">${escapeHtml(catVal)}</div>`;
+        tradVal = `<div style="max-height:120px; overflow-y:auto; font-size:11px; white-space:pre-wrap;">${escapeHtml(tradVal)}</div>`;
+        anyVal = `<div style="max-height:120px; overflow-y:auto; font-size:11px; white-space:pre-wrap;">${escapeHtml(anyVal)}</div>`;
       } else {
         catVal = escapeHtml(catVal);
         tradVal = escapeHtml(tradVal);

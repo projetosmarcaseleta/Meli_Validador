@@ -77,6 +77,18 @@ def validate_token(token: str) -> dict:
     return _get(f"{API_BASE_URL}/users/me", token)
 
 
+def get_item_description(mlb: str, token: str) -> str:
+    """GET /items/{id}/description — o lote /items?ids= não traz a descrição."""
+    item_id = str(mlb or "").strip().upper()
+    if not item_id:
+        return ""
+    data = _get(f"{API_BASE_URL}/items/{item_id}/description", token)
+    if not isinstance(data, dict):
+        return ""
+    text = str(data.get("plain_text") or data.get("text") or "").strip()
+    return text
+
+
 def get_products_batch(mlbs: list[str], token: str) -> dict:
     """
     GET /items?ids=MLB1,MLB2,...  (até 20 por chamada).

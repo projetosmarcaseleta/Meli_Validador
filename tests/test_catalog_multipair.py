@@ -50,10 +50,45 @@ def test_build_catalog_audit_item_includes_anymarket_by_sku():
     assert any("VOLTAGEM" in d or "AnyMarket" in d for d in item["divergences"])
 
 
+def test_build_catalog_audit_item_includes_description_and_extra_attrs():
+    cat = {
+        "mlb": "MLB1",
+        "title": "Lavadora",
+        "brand": "Brastemp",
+        "description": "Descrição catálogo",
+        "extra_attrs": {"tipo de lavadora": {"label": "Tipo de Lavadora", "value": "Automática"}},
+    }
+    trad = {
+        "mlb": "MLB2",
+        "title": "Lavadora",
+        "brand": "Brastemp",
+        "description": "Descrição tradicional",
+        "extra_attrs": {"tipo de lavadora": {"label": "Tipo de Lavadora", "value": "Automática"}},
+    }
+    any_mkt = {
+        "any_id": "999",
+        "sku": "240158200",
+        "title": "Lavadora",
+        "brand": "Brastemp",
+        "description": "Descrição AnyMarket",
+        "extra_attrs": {"tipo de lavadora": {"label": "Tipo de Lavadora", "value": "Automática"}},
+    }
+    item = compare.build_catalog_audit_item("240158200", cat, trad, any_mkt)
+    desc = next(c for c in item["comparison"] if c["key"] == "description")
+    assert desc["ml_value"] == "Descrição catálogo"
+    assert desc["any_value"] == "Descrição tradicional"
+    assert desc["any_mkt_value"] == "Descrição AnyMarket"
+    extra = next(c for c in item["comparison"] if c["key"] == "extra:tipo de lavadora")
+    assert extra["ml_value"] == "Automática"
+    assert extra["any_mkt_value"] == "Automática"
+    assert not any("DESCRIÇÃO" in d or "Descrição" in d for d in item["divergences"])
+
+
+@patch("exporter.get_item_description", return_value="")
 @patch("exporter.validate_token")
 @patch("exporter._resolve_skus_from_anymarket_db")
 @patch("exporter.get_products_batch")
-def test_process_skus_for_catalog_audit_multiple_catalogs(mock_get_batch, mock_db, mock_token):
+def test_process_skus_for_catalog_audit_multiple_catalogs(mock_get_batch, mock_db, mock_token, mock_desc):
     mock_token.return_value = {"id": 12345, "nickname": "SELETA"}
     
     # Simula SKU 241686700 com 2 catálogos (MLB_CAT1, MLB_CAT2) e 1 tradicional (MLB_TRAD1)
@@ -103,6 +138,40 @@ def test_process_skus_for_catalog_audit_multiple_catalogs(mock_get_batch, mock_d
     assert item2["mlb_cat"] == "MLB7523623932"
     assert item2["mlb_trad"] == "MLB7520745830"
     assert item2["item_id"] == "241686700_MLB7523623932"
+
+
+@patch("exporter.find_product_by_partner_id")
+@patch("exporter.get_item_description", return_value="")
+@patch("exporter.validate_token")
+@patch("exporter._resolve_skus_from_anymarket_db")
+@patch("exporter.get_products_batch")
+def test_process_skus_attaches_anymarket_product(mock_get_batch, mock_db, mock_token, mock_desc, mock_find):
+    mock_token.return_value = {"id": 1, "nickname": "SELETA"}
+    mock_db.return_value = {
+        "218840500": {
+            "cat": [("MLB1", "active")],
+            "trad": [("MLB2", "active")],
+        }
+    }
+    mock_get_batch.return_value = {
+        "MLB1": {"id": "MLB1", "title": "Cat", "catalog_listing": True, "status": "active", "pictures": []},
+        "MLB2": {"id": "MLB2", "title": "Trad", "catalog_listing": False, "status": "active", "pictures": []},
+    }
+    mock_find.return_value = {
+        "id": 7131940494,
+        "title": "Aparador Any",
+        "description": "Descrição AnyMarket",
+        "skus": [{"id": 1, "partnerId": "218840500", "title": "Aparador SKU", "ean": "789"}],
+        "images": [{"url": "https://example.com/any.jpg", "main": True, "index": 1}],
+        "brand": {"name": "tramontina"},
+    }
+
+    res = exporter.process_skus_for_catalog_audit(["218840500"], "FAKE_TOKEN", gumga_token="GUMGA")
+    item = res["items"][0]
+    assert item["anymarket"]["any_id"] == "7131940494"
+    assert item["anymarket"]["title"] == "Aparador SKU"
+    assert item["anymarket"]["images_list"] == ["https://example.com/any.jpg"]
+    mock_find.assert_called()
 
 
 def test_process_skus_for_catalog_excel_independent_decisions():

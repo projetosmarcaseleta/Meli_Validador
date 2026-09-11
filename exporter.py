@@ -8,8 +8,8 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from anymarket_api import extract_anymarket_fields, find_product_by_partner_id, get_product
-from api import BATCH_SIZE, LISTING_LABELS, LOGISTIC_LABELS, get_products_batch, search_items_by_seller_sku, validate_token
+from anymarket_api import extract_anymarket_fields, find_product_by_partner_id, get_product, normalize_attr_key
+from api import BATCH_SIZE, LISTING_LABELS, LOGISTIC_LABELS, get_item_description, get_products_batch, search_items_by_seller_sku, validate_token
 from compare import (
     build_compare_headers,
     build_compare_row,
@@ -29,6 +29,7 @@ from config import (
     ANYMARKET_DB_SSLMODE,
     GUMGA_TOKEN,
     ANYMARKET_PLATFORM,
+    get_gumga_token,
 )
 from import_parser import ImportRow
 
@@ -176,10 +177,100 @@ def _resolve_image_urls(produto: dict) -> list[str]:
     return urls
 
 
-def _build_ml_fields(produto: dict) -> dict[str, str | int | list]:
-    listing_id = produto.get("listing_type_id", "")
-    attrs = _attrs_map(produto)
-    image_urls = _resolve_image_urls(produto)
+_ML_ATTR_FIELD_IDS: dict[str, str] = {
+    "BRAND": "brand",
+    "MARCA": "brand",
+    "MODEL": "model",
+    "MODELO": "model",
+    "COLOR": "color",
+    "MAIN_COLOR": "color",
+    "COLOUR": "color",
+    "SIZE": "size",
+    "FILTRABLE_SIZE": "size",
+    "VOLTAGE": "voltage",
+    "GTIN": "ean",
+    "EAN": "ean",
+    "GENDER": "gender",
+    "MATERIAL": "material",
+    "POWER": "power",
+    "WASHING_CAPACITY_KG": "capacity",
+    "CAPACITY": "capacity",
+    "WASHING_MACHINE_CAPACITY": "capacity",
+    "LINE": "line",
+    "WARRANTY": "warranty",
+    "WARRANTY_TIME": "warranty",
+    "PACKAGE_HEIGHT": "height",
+    "HEIGHT": "height",
+    "PACKAGE_WIDTH": "width",
+    "WIDTH": "width",
+    "PACKAGE_LENGTH": "length",
+    "LENGTH": "length",
+    "PACKAGE_WEIGHT": "weight",
+    "WEIGHT": "weight",
+}
+
+_ML_ATTR_SKIP_IDS = {
+    "SELLER_SKU",
+    "ITEM_CONDITION",
+    "EMPTY_GTIN_REASON",
+    "GTIN",
+    "EAN",
+    "BRAND",
+    "MARCA",
+    "MODEL",
+    "MODELO",
+    "COLOR",
+    "MAIN_COLOR",
+    "COLOUR",
+    "SIZE",
+    "FILTRABLE_SIZE",
+    "VOLTAGE",
+    "GENDER",
+    "IS_FACTORY_KIT",
+    "KIT",
+    "PIECES_NUMBER",
+    "UNITS_PER_PACKAGE",
+    "UNIT_PACK",
+}
+
+
+def _truncate_text(text: str, limit: int = 2000) -> str:
+    value = str(text or "").strip()
+    if len(value) <= limit:
+        return value
+    return value[: limit - 3] + "..."
+
+
+def _ml_mapped_attr(attrs: dict, field: str) -> str:
+    for attr_id, mapped in _ML_ATTR_FIELD_IDS.items():
+        if mapped != field:
+            continue
+        value = _attr_value(attrs, attr_id)
+        if value:
+            return value
+    return ""
+
+
+def _ml_extra_attrs(produto: dict) -> dict[str, dict]:
+    extra: dict[str, dict] = {}
+    for attr in produto.get("attributes") or []:
+        if not isinstance(attr, dict):
+            continue
+        attr_id = str(attr.get("id") or "").strip().upper()
+        if attr_id in _ML_ATTR_SKIP_IDS or attr_id in _ML_ATTR_FIELD_IDS:
+            continue
+        name = str(attr.get("name") or attr_id).strip()
+        value = str(attr.get("value_name") or "").strip()
+        if not name or not value:
+            continue
+        key = normalize_attr_key(name)
+        if not key or key in extra:
+            continue
+        extra[key] = {"label": name, "value": value}
+    return extra
+
+
+def _extract_ml_description(produto: dict) -> str:
     description = str(produto.get("descriptions") or produto.get("description") or "")
     if isinstance(produto.get("descriptions"), list):
         parts = []
@@ -187,9 +278,41 @@ def _build_ml_fields(produto: dict) -> dict[str, str | int | list]:
             if isinstance(block, dict):
                 parts.append(str(block.get("plain_text") or block.get("text") or ""))
         description = " ".join(parts)
-    description = str(description).strip()
-    if len(description) > 500:
-        description = description[:497] + "..."
+    return _truncate_text(str(description).strip(), 2000)
+
+
+def _attach_ml_descriptions(ml_fields_by_mlb: dict[str, dict], token: str, progress_callback=None) -> None:
+    mlbs = [mlb for mlb in ml_fields_by_mlb.keys() if mlb]
+    if not mlbs or not token:
+        return
+    total = len(mlbs)
+    completed = 0
+    lock = threading.Lock()
+
+    def _one(mlb: str) -> tuple[str, str]:
+        try:
+            return mlb, get_item_description(mlb, token)
+        except Exception:
+            return mlb, ""
+
+    with ThreadPoolExecutor(max_workers=min(len(mlbs), MAX_WORKERS)) as pool:
+        futures = [pool.submit(_one, mlb) for mlb in mlbs]
+        for fut in as_completed(futures):
+            mlb, text = fut.result()
+            with lock:
+                completed += 1
+                if text:
+                    ml_fields_by_mlb[mlb]["description"] = _truncate_text(text, 2000)
+                if progress_callback:
+                    pct = int(78 + (completed / total) * 8)
+                    progress_callback(min(pct, 86), 100, f"Descrições ML: {completed}/{total}...")
+
+
+def _build_ml_fields(produto: dict) -> dict[str, str | int | list]:
+    listing_id = produto.get("listing_type_id", "")
+    attrs = _attrs_map(produto)
+    image_urls = _resolve_image_urls(produto)
+    description = _extract_ml_description(produto)
 
     price = produto.get("price")
     if price is None and produto.get("variations"):
@@ -219,12 +342,22 @@ def _build_ml_fields(produto: dict) -> dict[str, str | int | list]:
         "condition": str(produto.get("condition") or ""),
         "status": str(produto.get("status") or ""),
         "category_id": str(produto.get("category_id") or ""),
+        "category": str(produto.get("category_id") or ""),
         "catalog_product_id": str(produto.get("catalog_product_id") or ""),
         "permalink": str(produto.get("permalink") or ""),
+        "capacity": _ml_mapped_attr(attrs, "capacity"),
+        "power": _ml_mapped_attr(attrs, "power"),
+        "material": _ml_mapped_attr(attrs, "material"),
+        "warranty": _ml_mapped_attr(attrs, "warranty"),
+        "height": _ml_mapped_attr(attrs, "height"),
+        "width": _ml_mapped_attr(attrs, "width"),
+        "length": _ml_mapped_attr(attrs, "length"),
+        "weight": _ml_mapped_attr(attrs, "weight"),
         "image_main": image_urls[0] if image_urls else "",
         "image_count": str(len(image_urls)),
         "images": " | ".join(image_urls),
         "images_list": image_urls,
+        "extra_attrs": _ml_extra_attrs(produto),
     }
 
 
@@ -285,6 +418,7 @@ def process_mlbs(
         produto = produtos.get(mlb)
         if produto:
             ml_fields_by_mlb[mlb] = _build_ml_fields(produto)
+    _attach_ml_descriptions(ml_fields_by_mlb, token, progress_callback)
 
     any_by_mlb: dict[str, dict] = {}
     if with_any:
@@ -435,6 +569,7 @@ def process_mlbs_for_audit(
         produto = produtos.get(mlb)
         if produto:
             ml_fields_by_mlb[mlb] = _build_ml_fields(produto)
+    _attach_ml_descriptions(ml_fields_by_mlb, token, progress_callback)
 
     any_by_mlb: dict[str, dict] = {}
     if with_any:
@@ -767,26 +902,35 @@ def _fetch_anymarket_fields_by_skus(
     gumga = gumga_token.strip()
     total = len(unique)
     completed = 0
-    lock = threading.Lock()
 
     def _one(sku: str) -> tuple[str, dict]:
         try:
             product = find_product_by_partner_id(sku, gumga, any_platform)
-        except (PermissionError, Exception):
+        except PermissionError as exc:
+            print(f"[ANYMARKET] SKU {sku}: token recusado ({exc})", flush=True)
+            product = {}
+        except Exception as exc:
+            print(f"[ANYMARKET] SKU {sku}: {type(exc).__name__}: {exc}", flush=True)
             product = {}
         fields = extract_anymarket_fields(product, sku_hint=sku) if product else extract_anymarket_fields({})
+        if not (fields.get("any_id") or fields.get("title")):
+            print(f"[ANYMARKET] SKU {sku}: cadastro não encontrado", flush=True)
+        else:
+            print(
+                f"[ANYMARKET] SKU {sku}: id={fields.get('any_id')} "
+                f"fotos={len(fields.get('images_list') or [])}",
+                flush=True,
+            )
         return sku, fields
 
-    with ThreadPoolExecutor(max_workers=min(len(unique), MAX_WORKERS)) as pool:
-        futures = [pool.submit(_one, s) for s in unique]
-        for fut in as_completed(futures):
-            sku, fields = fut.result()
-            with lock:
-                out[sku] = fields
-                completed += 1
-                if progress_callback:
-                    pct = int(88 + (completed / total) * 8)
-                    progress_callback(min(pct, 96), 100, f"AnyMarket: {completed}/{total} SKU(s)...")
+    # Sequencial: o debug do Flask costuma engolir falhas em ThreadPool.
+    for sku in unique:
+        sku_key, fields = _one(sku)
+        out[sku_key] = fields
+        completed += 1
+        if progress_callback:
+            pct = int(88 + (completed / total) * 8)
+            progress_callback(min(pct, 96), 100, f"AnyMarket: {completed}/{total} SKU(s)...")
     return out
 
 
@@ -822,7 +966,7 @@ def process_skus_for_catalog_audit(
     mlb_inputs = [s.upper() for s in skus_clean if _is_mlb(s)]
     # (rótulo exibido, sku usado na busca)
     input_rows: list[tuple[str, str]] = [(s, s) for s in sku_inputs]
-    gumga = (gumga_token if gumga_token is not None else GUMGA_TOKEN) or ""
+    gumga = (gumga_token if gumga_token is not None else get_gumga_token()) or ""
     platform = (any_platform or ANYMARKET_PLATFORM or "SELETA").strip()
 
     if progress_callback:
@@ -905,6 +1049,10 @@ def process_skus_for_catalog_audit(
     ml_fields_by_mlb: dict[str, dict] = {}
     for mlb_id, raw_prod in produtos.items():
         ml_fields_by_mlb[mlb_id] = _build_ml_fields(raw_prod)
+    if ml_fields_by_mlb and token:
+        if progress_callback:
+            progress_callback(78, 100, "Buscando descrições dos anúncios ML...")
+        _attach_ml_descriptions(ml_fields_by_mlb, token, progress_callback)
 
     # 6. Para cada SKU, parear Catálogo e Tradicional
     items: list[dict] = []
@@ -929,6 +1077,8 @@ def process_skus_for_catalog_audit(
         any_by_sku = _fetch_anymarket_fields_by_skus(
             lookup_skus_for_any, gumga.strip(), platform, progress_callback
         )
+        found_n = sum(1 for f in any_by_sku.values() if (f or {}).get("any_id"))
+        print(f"[ANYMARKET] {found_n}/{len(lookup_skus_for_any)} SKU(s) com cadastro")
         missing_any = [s for s in lookup_skus_for_any if not (any_by_sku.get(s) or {}).get("any_id")]
         if missing_any:
             preview = ", ".join(missing_any[:8])

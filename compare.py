@@ -4,7 +4,7 @@ compare.py – Montagem lado a lado ML × AnyMarket e resumo de divergências.
 
 from __future__ import annotations
 
-from anymarket_api import match_values
+from anymarket_api import match_values, normalize_attr_key
 
 # Campos comparáveis: (chave_interna, rótulo_planilha)
 COMPARE_FIELDS: list[tuple[str, str]] = [
@@ -268,18 +268,71 @@ def build_audit_item(
 
 CATALOG_COMPARE_FIELDS: list[tuple[str, str]] = [
     ("title", "TÍTULO"),
+    ("description", "DESCRIÇÃO"),
     ("brand", "MARCA"),
     ("model", "MODELO"),
     ("color", "COR"),
     ("size", "TAMANHO"),
     ("voltage", "VOLTAGEM"),
     ("ean", "EAN / GTIN"),
+    ("gender", "GÊNERO"),
+    ("kit", "KIT"),
+    ("capacity", "CAPACIDADE"),
+    ("power", "POTÊNCIA"),
+    ("material", "MATERIAL"),
+    ("warranty", "GARANTIA"),
+    ("category", "CATEGORIA"),
+    ("price", "PREÇO"),
+    ("stock", "ESTOQUE"),
+    ("height", "ALTURA"),
+    ("width", "LARGURA"),
+    ("length", "PROFUNDIDADE"),
+    ("weight", "PESO"),
     ("image_count", "QTD FOTOS"),
 ]
 
+# Mostrados na tabela, mas não entram no banner / status_geral.
+INFORMATIONAL_COMPARE_KEYS = {
+    "title",
+    "description",
+    "category",
+    "price",
+    "stock",
+    "listing_type",
+    "shipping_type",
+    "status",
+    "height",
+    "width",
+    "length",
+    "weight",
+}
+
+
+def _is_informational_key(key: str) -> bool:
+    return key in INFORMATIONAL_COMPARE_KEYS or str(key).startswith("extra:")
+
 
 def _empty_anymarket() -> dict:
-    return {"images_list": []}
+    return {"images_list": [], "extra_attrs": {}}
+
+
+def _extra_attr_map(item: dict) -> dict:
+    extra = (item or {}).get("extra_attrs") or {}
+    return extra if isinstance(extra, dict) else {}
+
+
+def _extra_attr_value(extra: dict, key: str) -> str:
+    raw = extra.get(key)
+    if isinstance(raw, dict):
+        return str(raw.get("value") or "").strip()
+    return str(raw or "").strip()
+
+
+def _extra_attr_label(extra: dict, key: str) -> str:
+    raw = extra.get(key)
+    if isinstance(raw, dict) and raw.get("label"):
+        return str(raw.get("label")).strip()
+    return key
 
 
 def build_catalog_audit_item(
@@ -330,24 +383,14 @@ def build_catalog_audit_item(
             ref = cat_val or trad_val
             status_any = match_values(ref, any_val) if ref or any_val else "AMBOS_VAZIOS"
 
-        if has_cat and has_trad and status not in ("OK", "AMBOS_VAZIOS") and key != "title":
+        if has_cat and has_trad and status not in ("OK", "AMBOS_VAZIOS") and not _is_informational_key(key):
             if key == "image_count":
                 diff = f"Qtd Fotos: Catálogo ({cat_val}) ≠ Tradicional ({trad_val})"
-            elif key == "price":
-                diff = f"Preço: Catálogo R$ {cat_val} ≠ Tradicional R$ {trad_val}"
-            elif key == "status":
-                diff = f"Status: Catálogo ({cat_val}) ≠ Tradicional ({trad_val})"
-            elif key == "shipping_type":
-                diff = f"Envio: Catálogo ({cat_val}) ≠ Tradicional ({trad_val})"
-            elif key == "listing_type":
-                diff = f"Tipo: Catálogo ({cat_val}) ≠ Tradicional ({trad_val})"
-            elif key == "description":
-                diff = "Descrição diferente"
             else:
                 diff = f"{label}: Catálogo='{cat_val[:40]}' ≠ Tradicional='{trad_val[:40]}'"
             divergences.append(diff)
 
-        if has_any and status_any not in ("OK", "AMBOS_VAZIOS", "AUSENTE_ML") and key != "title":
+        if has_any and status_any not in ("OK", "AMBOS_VAZIOS", "AUSENTE_ML") and not _is_informational_key(key):
             ref_label = "Catálogo" if cat_val else "Tradicional"
             ref_val = cat_val or trad_val
             if key == "image_count":
@@ -357,6 +400,39 @@ def build_catalog_audit_item(
 
         field_comparisons.append({
             "key": key,
+            "label": label,
+            "ml_value": cat_val,
+            "any_value": trad_val,
+            "any_mkt_value": any_val,
+            "status": status,
+            "status_any": status_any,
+        })
+
+    cat_extra = _extra_attr_map(cat)
+    trad_extra = _extra_attr_map(trad)
+    any_extra = _extra_attr_map(any_mkt)
+    known_keys = {normalize_attr_key(k) for k, _ in CATALOG_COMPARE_FIELDS}
+    known_keys.update(normalize_attr_key(label) for _, label in CATALOG_COMPARE_FIELDS)
+    extra_keys = sorted(set(cat_extra) | set(trad_extra) | set(any_extra))
+    for extra_key in extra_keys:
+        if extra_key in known_keys:
+            continue
+        cat_val = _extra_attr_value(cat_extra, extra_key)
+        trad_val = _extra_attr_value(trad_extra, extra_key)
+        any_val = _extra_attr_value(any_extra, extra_key) if has_any else ""
+        label = (
+            _extra_attr_label(cat_extra, extra_key)
+            or _extra_attr_label(trad_extra, extra_key)
+            or _extra_attr_label(any_extra, extra_key)
+            or extra_key
+        )
+        status = match_values(cat_val, trad_val) if (has_cat and has_trad) else ("AUSENTE_CAT" if not has_cat else "AUSENTE_TRAD")
+        status_any = "AUSENTE_ANY"
+        if has_any:
+            ref = cat_val or trad_val
+            status_any = match_values(ref, any_val) if ref or any_val else "AMBOS_VAZIOS"
+        field_comparisons.append({
+            "key": f"extra:{extra_key}",
             "label": label,
             "ml_value": cat_val,
             "any_value": trad_val,

@@ -13,7 +13,8 @@ try:
     load_dotenv(_here.parent.parent / ".env")
     load_dotenv()
 except ImportError:
-    pass
+    _here = Path(__file__).resolve().parent
+    load_dotenv = None
 
 API_BASE_URL = os.environ.get("ML_API_BASE_URL", "https://api.mercadolibre.com")
 PROXY        = os.environ.get("HTTP_PROXY", None)
@@ -32,6 +33,16 @@ ANYMARKET_API_BASE_URL = os.environ.get(
 )
 ANYMARKET_PLATFORM = os.environ.get("ANYMARKET_PLATFORM", "SELETA")
 GUMGA_TOKEN = os.environ.get("GUMGA_TOKEN", os.environ.get("ANYMARKET_GUMGA_TOKEN", ""))
+
+
+def get_gumga_token() -> str:
+    """Lê o gumgaToken na hora da requisição (não só na importação do módulo)."""
+    current = (os.environ.get("GUMGA_TOKEN") or os.environ.get("ANYMARKET_GUMGA_TOKEN") or "").strip()
+    if current:
+        return current
+    if load_dotenv:
+        load_dotenv(_here / ".env", override=True)
+    return (os.environ.get("GUMGA_TOKEN") or os.environ.get("ANYMARKET_GUMGA_TOKEN") or GUMGA_TOKEN or "").strip()
 
 # Webhook n8n para consulta de SKUs (Prioritário para VPS sem acesso direto ao banco)
 ANYMARKET_SKU_WEBHOOK_URL = os.environ.get(

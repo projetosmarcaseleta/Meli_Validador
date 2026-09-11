@@ -15,7 +15,7 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 from anymarket_api import validate_gumga_token
 from api import validate_token
-from config import ANYMARKET_PLATFORM, GUMGA_TOKEN, AI_PREVALIDATION_ENABLED, MELI_TOKEN_WEBHOOK_URL, HTTP_TIMEOUT
+from config import ANYMARKET_PLATFORM, GUMGA_TOKEN, AI_PREVALIDATION_ENABLED, MELI_TOKEN_WEBHOOK_URL, HTTP_TIMEOUT, get_gumga_token
 from n8n_token import fetch_meli_token_from_n8n
 from exporter import (
     process_mlbs,
@@ -221,7 +221,14 @@ def api_export():
     sku_list = data.get("skus", [])
     mlb_list = data.get("mlbs", [])
     import_rows = data.get("import_rows") or []
-    gumga_token = (data.get("gumga_token") or GUMGA_TOKEN or "").strip()
+    gumga_token = (
+        data.get("gumga_token")
+        or get_gumga_token()
+        or os.environ.get("GUMGA_TOKEN")
+        or os.environ.get("ANYMARKET_GUMGA_TOKEN")
+        or GUMGA_TOKEN
+        or ""
+    ).strip()
     any_platform = (data.get("any_platform") or ANYMARKET_PLATFORM or "SELETA").strip()
     reviews = data.get("reviews") or {}
     filter_decision = (data.get("filter_decision") or "all").strip().lower()
@@ -367,7 +374,14 @@ def api_audit():
     sku_list = data.get("skus", [])
     mlb_list = data.get("mlbs", [])
     import_rows = data.get("import_rows") or []
-    gumga_token = (data.get("gumga_token") or GUMGA_TOKEN or "").strip()
+    gumga_token = (
+        data.get("gumga_token")
+        or get_gumga_token()
+        or os.environ.get("GUMGA_TOKEN")
+        or os.environ.get("ANYMARKET_GUMGA_TOKEN")
+        or GUMGA_TOKEN
+        or ""
+    ).strip()
     any_platform = (data.get("any_platform") or ANYMARKET_PLATFORM or "SELETA").strip()
 
     if not token:
@@ -389,7 +403,7 @@ def api_audit():
         if not sku_list:
             return jsonify({"success": False, "error": "Informe uma lista de SKUs."}), 400
 
-        print(f"[AUDIT CATÁLOGO] {len(sku_list)} SKUs")
+        print(f"[AUDIT CATÁLOGO] {len(sku_list)} SKUs | gumga={len(gumga_token)} chars", flush=True)
         try:
             result = process_skus_for_catalog_audit(
                 sku_list,
