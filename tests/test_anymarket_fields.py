@@ -265,6 +265,56 @@ def test_resolve_product_by_marketplace_id_uses_listing_product_id():
     assert sku_id == "128196441"
 
 
+def test_resolve_product_rejects_unrelated_first_listing():
+    class FakeResp:
+        def __init__(self, payload, status=200):
+            self.status_code = status
+            self._payload = payload
+            self.text = ""
+
+        def json(self):
+            return self._payload
+
+    session = MagicMock()
+    session.get.return_value = FakeResp({
+        "content": [{
+            "idInMarketplace": "MLB0000000001",
+            "productId": 111,
+            "skuId": 222,
+            "title": "Mousepad Gamer Husky",
+        }],
+    })
+    with patch("anymarket_api._session", return_value=session), patch(
+        "anymarket_api.get_product", return_value={"id": 111, "title": "Mousepad Gamer Husky"}
+    ) as mock_get:
+        product, sku_id = resolve_product_by_marketplace_id("MLB5125868231", "TOKEN", "SELETA")
+    assert product == {}
+    assert sku_id == ""
+    mock_get.assert_not_called()
+
+
+def test_find_product_by_ean_rejects_unrelated_first_page():
+    class FakeResp:
+        def __init__(self, payload, status=200):
+            self.status_code = status
+            self._payload = payload
+            self.text = ""
+
+        def json(self):
+            return self._payload
+
+    session = MagicMock()
+    session.get.return_value = FakeResp({
+        "content": [{"id": 111, "title": "Mousepad Gamer Husky", "ean": "789"}],
+    })
+    with patch("anymarket_api._session", return_value=session), patch(
+        "anymarket_api.get_product", return_value={"id": 111, "title": "Mousepad", "skus": [{"ean": "789"}]}
+    ):
+        product, sku_id = find_product_by_ean("0195949036828", "TOKEN", "SELETA")
+    assert product == {}
+    assert sku_id == ""
+
+
 def test_find_product_by_ean_loads_full_product():
     class FakeResp:
         def __init__(self, payload, status=200):

@@ -263,6 +263,37 @@ def find_product_by_partner_id(
 
         try:
             resp = _session().get(
+                f"{base}/products",
+                headers=headers,
+                params={"externalId": sku, "limit": 10},
+                proxies=_PROXIES,
+                timeout=HTTP_TIMEOUT,
+            )
+            _auth_error(resp)
+            if resp.status_code < 400:
+                hits = [item for item in _extract_content_list(resp.json()) if isinstance(item, dict)]
+                unique_full = None
+                for item in hits:
+                    full = _full_product(item.get("id"), item)
+                    if _item_matches_sku(full, candidate_set) or _item_matches_sku(item, candidate_set):
+                        return full
+                    ext = str((full or item).get("externalIdProduct") or (full or item).get("externalId") or "").strip()
+                    if ext in candidate_set:
+                        return full
+                    if unique_full is None:
+                        unique_full = full
+                    else:
+                        unique_full = None
+                        break
+                if unique_full and unique_full.get("id") and len(hits) == 1:
+                    return unique_full
+        except PermissionError:
+            raise
+        except Exception as exc:
+            print(f"[ANYMARKET ERRO] busca products externalId={sku} -> {type(exc).__name__}: {exc}")
+
+        try:
+            resp = _session().get(
                 f"{base}/skus/marketplaces",
                 headers=headers,
                 params={"partnerID": sku},
@@ -358,17 +389,36 @@ def _listing_marketplace_ids(item: dict) -> set[str]:
 
 def _pick_listing_for_mlb(items: list, mlb: str) -> dict:
     wanted = str(mlb or "").strip().upper()
-    dicts = [item for item in items if isinstance(item, dict)]
-    if not dicts:
-        return {}
     if not wanted:
-        return dicts[0]
-    for item in dicts:
-        if wanted in _listing_marketplace_ids(item):
+        return {}
+    for item in items:
+        if isinstance(item, dict) and wanted in _listing_marketplace_ids(item):
             return item
-    if len(dicts) == 1:
-        return dicts[0]
     return {}
+
+
+def _ean_values(value: str) -> set[str]:
+    raw = str(value or "").strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    out = {raw} if raw else set()
+    if digits:
+        out.add(digits)
+        stripped = digits.lstrip("0") or digits
+        out.add(stripped)
+    return {item for item in out if item}
+
+
+def _product_has_ean(product: dict, wanted: set[str]) -> bool:
+    if not product or not wanted:
+        return False
+    if _ean_values(str(product.get("ean") or "")) & wanted:
+        return True
+    for sku in product.get("skus") or []:
+        if not isinstance(sku, dict):
+            continue
+        if _ean_values(str(sku.get("ean") or "")) & wanted:
+            return True
+    return False
 
 
 def _auth_error_from_resp(resp: requests.Response) -> None:
@@ -394,10 +444,10 @@ def resolve_product_by_marketplace_id(
 
     base = ANYMARKET_API_BASE_URL.rstrip("/")
     headers = _headers(gumga_token, platform)
+    # A API oficial de /skus/marketplaces exige partnerID; estes params extras
+    # só valem se o item devolvido trouxer o MLB no próprio JSON.
     searches: list[tuple[str, dict[str, Any]]] = [
-        (f"{base}/skus/marketplaces", {"idInMarketplace": mlb}),
-        (f"{base}/skus/marketplaces", {"id_in_marketplace": mlb}),
-        (f"{base}/skus/marketplaces", {"marketplaceId": mlb}),
+        (f"{base}/skus/marketplaces", {"idInMarketplace": mlb, "limit": 10}),
         (f"{base}/transmissions", {"idInMarketplace": mlb, "limit": 10}),
     ]
 
@@ -480,17 +530,20 @@ def find_product_by_ean(
                 hits = [item for item in _extract_content_list(resp.json()) if isinstance(item, dict)]
                 if not hits:
                     continue
-                chosen = hits[0]
-                product_id = chosen.get("id") if path == "/products" else _find_product_id_in_sku(chosen)
-                if path == "/skus" and not product_id:
-                    product_id = chosen.get("productId") or chosen.get("idProduct")
-                product = get_product(product_id, gumga_token, platform) if product_id else {}
-                if not product and path == "/products" and chosen.get("id"):
-                    product = chosen
-                if not product:
-                    continue
-                sku_id = _sku_id_from_listing(chosen) or _sku_id_by_ean(product)
-                return product, sku_id
+                for chosen in hits:
+                    chosen_eans = _ean_values(str(chosen.get("ean") or ""))
+                    product_id = chosen.get("id") if path == "/products" else _find_product_id_in_sku(chosen)
+                    if path == "/skus" and not product_id:
+                        product_id = chosen.get("productId") or chosen.get("idProduct")
+                    product = get_product(product_id, gumga_token, platform) if product_id else {}
+                    if not product and path == "/products" and chosen.get("id"):
+                        product = chosen
+                    if not product:
+                        continue
+                    if not (chosen_eans & wanted) and not _product_has_ean(product, wanted):
+                        continue
+                    sku_id = _sku_id_from_listing(chosen) or _sku_id_by_ean(product)
+                    return product, sku_id
             except PermissionError:
                 raise
             except Exception as exc:
