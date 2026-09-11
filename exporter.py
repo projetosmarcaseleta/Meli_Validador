@@ -98,6 +98,30 @@ def _any_sku_id_from_payload(val: dict) -> str:
     return ""
 
 
+def _mlb_slots_from_webhook(entries) -> list[tuple[str, str]]:
+    slots: list[tuple[str, str]] = []
+    if not isinstance(entries, list):
+        return slots
+    for item in entries:
+        mlb = ""
+        status = "active"
+        if isinstance(item, dict):
+            mlb = str(
+                item.get("mlb")
+                or item.get("id_in_marketplace")
+                or item.get("idInMarketplace")
+                or ""
+            ).strip()
+            status = str(item.get("status") or item.get("status_in_marketplace") or "active").strip() or "active"
+        elif isinstance(item, (list, tuple)) and len(item) >= 2:
+            mlb = str(item[0] or "").strip()
+            status = str(item[1] or "active").strip() or "active"
+        mlb = mlb.upper()
+        if mlb.startswith("MLB"):
+            slots.append((mlb, status))
+    return slots
+
+
 def _apply_webhook_product_ids(sku_map: dict[str, dict], sku: str, val: dict) -> None:
     _set_any_product_id(sku_map, sku, _any_product_id_from_payload(val))
     sid = _any_sku_id_from_payload(val)
@@ -864,8 +888,8 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
                 for s, val in incoming_map.items():
                     s_clean = str(s).strip()
                     if s_clean in sku_map:
-                        cat_list = [(str(m[0]).upper(), str(m[1])) for m in val.get("cat", []) if m and len(m) >= 2]
-                        trad_list = [(str(m[0]).upper(), str(m[1])) for m in val.get("trad", []) if m and len(m) >= 2]
+                        cat_list = _mlb_slots_from_webhook(val.get("cat", []))
+                        trad_list = _mlb_slots_from_webhook(val.get("trad", []))
                         sku_map[s_clean]["cat"] = cat_list
                         sku_map[s_clean]["trad"] = trad_list
                         _apply_webhook_product_ids(sku_map, s_clean, val if isinstance(val, dict) else {})

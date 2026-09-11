@@ -239,6 +239,33 @@ def test_webhook_attaches_anymarket_product_id(mock_post):
     assert sku_map["238834500"]["any_sku_id"] == "128000001"
 
 
+@patch("exporter.ANYMARKET_DB_HOST", "")
+@patch("exporter.ANYMARKET_DB_USER", "")
+@patch("exporter.ANYMARKET_SKU_WEBHOOK_URL", "https://example.test/hook")
+@patch("requests.post")
+def test_webhook_accepts_cat_objects_and_id_product(mock_post):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "success": True,
+        "sku_map": {
+            "238034500": {
+                "cat": [{"mlb": "MLB5125888231", "status": "Ativo"}],
+                "trad": [],
+                "id_product": "7131999157",
+                "sku_id": "128196441",
+            }
+        },
+        "count": 1,
+    }
+    mock_post.return_value = mock_resp
+
+    sku_map = exporter._resolve_skus_from_anymarket_db(["238034500"])
+    assert sku_map["238034500"]["cat"][0] == ("MLB5125888231", "Ativo")
+    assert sku_map["238034500"]["any_product_id"] == "7131999157"
+    assert sku_map["238034500"]["any_sku_id"] == "128196441"
+
+
 def test_process_skus_for_catalog_excel_independent_decisions():
     items = [
         {
