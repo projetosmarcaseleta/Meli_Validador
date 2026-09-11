@@ -8,7 +8,14 @@ import re
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from anymarket_api import extract_anymarket_fields, find_product_by_partner_id, get_product, normalize_attr_key
+from anymarket_api import (
+    extract_anymarket_fields,
+    find_product_by_ean,
+    find_product_by_partner_id,
+    get_product,
+    normalize_attr_key,
+    resolve_product_by_marketplace_id,
+)
 from api import BATCH_SIZE, LISTING_LABELS, LOGISTIC_LABELS, get_item_description, get_products_batch, search_items_by_seller_sku, validate_token
 from compare import (
     build_compare_headers,
@@ -81,7 +88,7 @@ def _append_mlb_slot(sku_map: dict[str, dict], sku: str, mlb: str, is_catalog: b
 def _any_product_id_from_payload(val: dict) -> str:
     if not isinstance(val, dict):
         return ""
-    for key in ("any_product_id", "product_id", "id_product", "idProduct"):
+    for key in ("any_product_id", "product_id", "id_product", "idProduct", "productId"):
         pid = str(val.get(key) or "").strip()
         if pid:
             return pid
@@ -122,15 +129,45 @@ def _mlb_slots_from_webhook(entries) -> list[tuple[str, str]]:
     return slots
 
 
+def _ids_from_webhook_entries(entries) -> tuple[str, str]:
+    if not isinstance(entries, list):
+        return "", ""
+    product_id = ""
+    sku_id = ""
+    for item in entries:
+        if not isinstance(item, dict):
+            continue
+        if not product_id:
+            product_id = _any_product_id_from_payload(item)
+        if not sku_id:
+            sku_id = _any_sku_id_from_payload(item)
+        if product_id and sku_id:
+            break
+    return product_id, sku_id
+
+
 def _apply_webhook_product_ids(sku_map: dict[str, dict], sku: str, val: dict) -> None:
-    _set_any_product_id(sku_map, sku, _any_product_id_from_payload(val))
-    sid = _any_sku_id_from_payload(val)
-    if not sid:
+    product_id = _any_product_id_from_payload(val)
+    sku_id = _any_sku_id_from_payload(val)
+    if not product_id or not sku_id:
+        nested_pid, nested_sid = _ids_from_webhook_entries(val.get("cat"))
+        if not product_id:
+            product_id = nested_pid
+        if not sku_id:
+            sku_id = nested_sid
+    if not product_id or not sku_id:
+        nested_pid, nested_sid = _ids_from_webhook_entries(val.get("trad"))
+        if not product_id:
+            product_id = nested_pid
+        if not sku_id:
+            sku_id = nested_sid
+    _set_any_product_id(sku_map, sku, product_id)
+    if not sku_id:
         return
     if sku not in sku_map:
         sku_map[sku] = {"cat": [], "trad": []}
     if not str(sku_map[sku].get("any_sku_id") or "").strip():
-        sku_map[sku]["any_sku_id"] = sid
+        sku_map[sku]["any_sku_id"] = sku_id
 
 
 def _set_any_product_id(sku_map: dict[str, dict], sku: str, product_id: str) -> None:
@@ -1071,8 +1108,10 @@ def _fetch_anymarket_fields_by_skus(
     progress_callback=None,
     product_ids_by_sku: dict[str, str] | None = None,
     sku_ids_by_sku: dict[str, str] | None = None,
+    mlbs_by_sku: dict[str, list[str]] | None = None,
+    eans_by_sku: dict[str, str] | None = None,
 ) -> dict[str, dict]:
-    """Busca o produto AnyMarket pela API v2, filtrando só pelo SKU (partnerId)."""
+    """Busca o produto AnyMarket pela API v2 (SKU, ID, MLB ou EAN)."""
     unique = list(dict.fromkeys(s.strip() for s in skus if s and str(s).strip() and not _is_mlb(s)))
     out: dict[str, dict] = {}
     if not unique or not (gumga_token or "").strip():
@@ -1082,10 +1121,14 @@ def _fetch_anymarket_fields_by_skus(
     total = len(unique)
     completed = 0
     ids_by_sku = product_ids_by_sku or {}
-    sku_ids = sku_ids_by_sku or {}
+    sku_ids = dict(sku_ids_by_sku or {})
+    mlb_map = mlbs_by_sku or {}
+    ean_map = eans_by_sku or {}
 
     def _one(sku: str) -> tuple[str, dict]:
         product = {}
+        sku_id_hint = str(sku_ids.get(sku) or "").strip()
+        ean_hint = str(ean_map.get(sku) or "").strip()
         try:
             product = find_product_by_partner_id(sku, gumga, any_platform)
         except PermissionError as exc:
@@ -1107,8 +1150,43 @@ def _fetch_anymarket_fields_by_skus(
                 except Exception as exc:
                     print(f"[ANYMARKET] SKU {sku}: GET product {fallback_id} {type(exc).__name__}: {exc}", flush=True)
                     product = {}
+        if not product:
+            for mlb in mlb_map.get(sku) or []:
+                try:
+                    found, listing_sku_id = resolve_product_by_marketplace_id(mlb, gumga, any_platform)
+                except PermissionError as exc:
+                    print(f"[ANYMARKET] SKU {sku}: token recusado ({exc})", flush=True)
+                    found, listing_sku_id = {}, ""
+                except Exception as exc:
+                    print(f"[ANYMARKET] SKU {sku}: MLB {mlb} {type(exc).__name__}: {exc}", flush=True)
+                    found, listing_sku_id = {}, ""
+                if found:
+                    product = found
+                    if listing_sku_id and not sku_id_hint:
+                        sku_id_hint = listing_sku_id
+                    print(f"[ANYMARKET] SKU {sku}: cadastro via MLB {mlb}", flush=True)
+                    break
+        if not product and ean_hint:
+            try:
+                found, listing_sku_id = find_product_by_ean(ean_hint, gumga, any_platform)
+            except PermissionError as exc:
+                print(f"[ANYMARKET] SKU {sku}: token recusado ({exc})", flush=True)
+                found, listing_sku_id = {}, ""
+            except Exception as exc:
+                print(f"[ANYMARKET] SKU {sku}: EAN {ean_hint} {type(exc).__name__}: {exc}", flush=True)
+                found, listing_sku_id = {}, ""
+            if found:
+                product = found
+                if listing_sku_id and not sku_id_hint:
+                    sku_id_hint = listing_sku_id
+                print(f"[ANYMARKET] SKU {sku}: cadastro via EAN {ean_hint}", flush=True)
         fields = (
-            extract_anymarket_fields(product, sku_hint=sku, sku_id_hint=str(sku_ids.get(sku) or ""))
+            extract_anymarket_fields(
+                product,
+                sku_hint=sku,
+                sku_id_hint=sku_id_hint,
+                ean_hint=ean_hint,
+            )
             if product
             else extract_anymarket_fields({})
         )
@@ -1273,6 +1351,18 @@ def process_skus_for_catalog_audit(
     if gumga.strip() and lookup_skus_for_any:
         if progress_callback:
             progress_callback(88, 100, "Buscando cadastro AnyMarket por SKU...")
+        mlbs_by_sku: dict[str, list[str]] = {}
+        eans_by_sku: dict[str, str] = {}
+        for sku in lookup_skus_for_any:
+            slots = db_map.get(sku) or {}
+            mlbs = [m for m, _ in (slots.get("cat") or [])] + [m for m, _ in (slots.get("trad") or [])]
+            if mlbs:
+                mlbs_by_sku[sku] = list(dict.fromkeys(mlbs))
+            for mlb in mlbs_by_sku.get(sku) or []:
+                ean = str((ml_fields_by_mlb.get(mlb) or {}).get("ean") or "").strip()
+                if ean:
+                    eans_by_sku[sku] = ean
+                    break
         any_by_sku = _fetch_anymarket_fields_by_skus(
             lookup_skus_for_any,
             gumga.strip(),
@@ -1288,6 +1378,8 @@ def process_skus_for_catalog_audit(
                 for sku in lookup_skus_for_any
                 if str((db_map.get(sku) or {}).get("any_sku_id") or "").strip()
             },
+            mlbs_by_sku=mlbs_by_sku,
+            eans_by_sku=eans_by_sku,
         )
         found_n = sum(1 for f in any_by_sku.values() if (f or {}).get("any_id"))
         print(f"[ANYMARKET] {found_n}/{len(lookup_skus_for_any)} SKU(s) com cadastro")

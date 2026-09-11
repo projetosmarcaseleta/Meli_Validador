@@ -2,9 +2,12 @@ from unittest.mock import MagicMock, patch
 
 from anymarket_api import (
     _item_matches_sku,
+    _product_id_from_listing,
     _sku_lookup_candidates,
     extract_anymarket_fields,
+    find_product_by_ean,
     find_product_by_partner_id,
+    resolve_product_by_marketplace_id,
 )
 
 
@@ -210,3 +213,80 @@ def test_find_product_accepts_unique_sku_filter_without_nested_skus():
         product = find_product_by_partner_id("238834500", "TOKEN", "SELETA")
     assert product["id"] == 7131999157
     assert product["skus"][0]["partnerId"] == "238834500"
+
+
+def test_product_id_from_nested_listing():
+    listing = {
+        "idInMarketplace": "MLB5125868231",
+        "sku": {"id": 128196441, "productId": 7131999157, "partnerId": "MTPG3BR/A"},
+    }
+    assert _product_id_from_listing(listing) == "7131999157"
+
+
+def test_extract_selects_sku_by_ean_when_partner_id_differs():
+    product = {
+        "id": 10,
+        "title": "Pai",
+        "skus": [
+            {"id": 1, "partnerId": "AAA", "title": "Outra cor", "ean": "111"},
+            {"id": 2, "partnerId": "MTPG3BR/A", "title": "iPhone Preto", "ean": "0195949036828"},
+        ],
+    }
+    fields = extract_anymarket_fields(product, sku_hint="238034500", ean_hint="0195949036828")
+    assert fields["title"] == "iPhone Preto"
+    assert fields["any_sku_id"] == "2"
+    assert fields["ean"] == "0195949036828"
+
+
+def test_resolve_product_by_marketplace_id_uses_listing_product_id():
+    class FakeResp:
+        def __init__(self, payload, status=200):
+            self.status_code = status
+            self._payload = payload
+            self.text = ""
+
+        def json(self):
+            return self._payload
+
+    session = MagicMock()
+    session.get.return_value = FakeResp({
+        "content": [{
+            "idInMarketplace": "MLB5125868231",
+            "productId": 7131999157,
+            "skuId": 128196441,
+        }],
+    })
+    full = {"id": 7131999157, "title": "iPhone Any"}
+    with patch("anymarket_api._session", return_value=session), patch(
+        "anymarket_api.get_product", return_value=full
+    ):
+        product, sku_id = resolve_product_by_marketplace_id("MLB5125868231", "TOKEN", "SELETA")
+    assert product["id"] == 7131999157
+    assert sku_id == "128196441"
+
+
+def test_find_product_by_ean_loads_full_product():
+    class FakeResp:
+        def __init__(self, payload, status=200):
+            self.status_code = status
+            self._payload = payload
+            self.text = ""
+
+        def json(self):
+            return self._payload
+
+    session = MagicMock()
+    session.get.return_value = FakeResp({
+        "content": [{"id": 7131999157, "title": "iPhone listagem"}],
+    })
+    full = {
+        "id": 7131999157,
+        "title": "iPhone Any",
+        "skus": [{"id": 2, "ean": "0195949036828", "title": "Preto"}],
+    }
+    with patch("anymarket_api._session", return_value=session), patch(
+        "anymarket_api.get_product", return_value=full
+    ):
+        product, sku_id = find_product_by_ean("0195949036828", "TOKEN", "SELETA")
+    assert product["id"] == 7131999157
+    assert sku_id == "2"

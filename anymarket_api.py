@@ -303,6 +303,201 @@ def find_product_by_partner_id(
     return {}
 
 
+def _as_id(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text or text.lower() == "none":
+        return ""
+    return text
+
+
+def _product_id_from_listing(item: dict) -> str:
+    if not isinstance(item, dict):
+        return ""
+    for key in ("productId", "idProduct", "id_product", "idproduct"):
+        pid = _as_id(item.get(key))
+        if pid:
+            return pid
+    product = item.get("product")
+    if isinstance(product, dict):
+        pid = _as_id(product.get("id"))
+        if pid:
+            return pid
+    sku = item.get("sku")
+    if isinstance(sku, dict):
+        return _product_id_from_listing(sku)
+    return _as_id(_find_product_id_in_sku(item))
+
+
+def _sku_id_from_listing(item: dict) -> str:
+    if not isinstance(item, dict):
+        return ""
+    for key in ("skuId", "idSku", "id_sku", "idsku"):
+        sid = _as_id(item.get(key))
+        if sid:
+            return sid
+    sku = item.get("sku")
+    if isinstance(sku, dict):
+        sid = _as_id(sku.get("id"))
+        if sid:
+            return sid
+    return ""
+
+
+def _listing_marketplace_ids(item: dict) -> set[str]:
+    ids: set[str] = set()
+    if not isinstance(item, dict):
+        return ids
+    for key in ("idInMarketplace", "id_in_marketplace", "idInMarketPlace", "marketplaceId"):
+        val = str(item.get(key) or "").strip().upper()
+        if val:
+            ids.add(val)
+    return ids
+
+
+def _pick_listing_for_mlb(items: list, mlb: str) -> dict:
+    wanted = str(mlb or "").strip().upper()
+    dicts = [item for item in items if isinstance(item, dict)]
+    if not dicts:
+        return {}
+    if not wanted:
+        return dicts[0]
+    for item in dicts:
+        if wanted in _listing_marketplace_ids(item):
+            return item
+    if len(dicts) == 1:
+        return dicts[0]
+    return {}
+
+
+def _auth_error_from_resp(resp: requests.Response) -> None:
+    if resp.status_code != 401:
+        return
+    body = _content(resp)
+    msg = body.get("message") if isinstance(body, dict) else ""
+    raise PermissionError(msg or "Token AnyMarket inválido (401).")
+
+
+def resolve_product_by_marketplace_id(
+    marketplace_id: str,
+    gumga_token: str,
+    platform: str | None = None,
+) -> tuple[dict, str]:
+    """
+    Localiza o produto AnyMarket pelo MLB (idInMarketplace).
+    Retorna (produto, sku_id).
+    """
+    mlb = str(marketplace_id or "").strip().upper()
+    if not mlb or not (gumga_token or "").strip():
+        return {}, ""
+
+    base = ANYMARKET_API_BASE_URL.rstrip("/")
+    headers = _headers(gumga_token, platform)
+    searches: list[tuple[str, dict[str, Any]]] = [
+        (f"{base}/skus/marketplaces", {"idInMarketplace": mlb}),
+        (f"{base}/skus/marketplaces", {"id_in_marketplace": mlb}),
+        (f"{base}/skus/marketplaces", {"marketplaceId": mlb}),
+        (f"{base}/transmissions", {"idInMarketplace": mlb, "limit": 10}),
+    ]
+
+    for url, params in searches:
+        try:
+            resp = _session().get(
+                url,
+                headers=headers,
+                params=params,
+                proxies=_PROXIES,
+                timeout=HTTP_TIMEOUT,
+            )
+            _auth_error_from_resp(resp)
+            if resp.status_code >= 400:
+                continue
+            listing = _pick_listing_for_mlb(_extract_content_list(resp.json()), mlb)
+            if not listing:
+                continue
+            product_id = _product_id_from_listing(listing)
+            sku_id = _sku_id_from_listing(listing)
+            if not product_id:
+                continue
+            product = get_product(product_id, gumga_token, platform) or {}
+            if product.get("id"):
+                return product, sku_id
+        except PermissionError:
+            raise
+        except Exception as exc:
+            print(f"[ANYMARKET ERRO] busca marketplace {mlb} {url} -> {type(exc).__name__}: {exc}")
+    return {}, ""
+
+
+def find_product_by_ean(
+    ean: str,
+    gumga_token: str,
+    platform: str | None = None,
+) -> tuple[dict, str]:
+    """
+    Localiza o produto AnyMarket pelo EAN/GTIN.
+    Retorna (produto, sku_id).
+    """
+    raw = str(ean or "").strip()
+    digits = "".join(ch for ch in raw if ch.isdigit())
+    candidates = []
+    for value in (raw, digits, digits.lstrip("0") or digits):
+        if value and value not in candidates:
+            candidates.append(value)
+    if not candidates or not (gumga_token or "").strip():
+        return {}, ""
+
+    base = ANYMARKET_API_BASE_URL.rstrip("/")
+    headers = _headers(gumga_token, platform)
+    wanted = set(candidates)
+
+    def _sku_id_by_ean(product: dict) -> str:
+        for sku in product.get("skus") or []:
+            if not isinstance(sku, dict):
+                continue
+            sku_ean = str(sku.get("ean") or "").strip()
+            if sku_ean in wanted or "".join(ch for ch in sku_ean if ch.isdigit()) in wanted:
+                return _as_id(sku.get("id"))
+        return ""
+
+    for value in candidates:
+        for path, params in (
+            ("/products", {"ean": value, "limit": 10}),
+            ("/skus", {"ean": value, "limit": 10}),
+        ):
+            try:
+                resp = _session().get(
+                    f"{base}{path}",
+                    headers=headers,
+                    params=params,
+                    proxies=_PROXIES,
+                    timeout=HTTP_TIMEOUT,
+                )
+                _auth_error_from_resp(resp)
+                if resp.status_code >= 400:
+                    continue
+                hits = [item for item in _extract_content_list(resp.json()) if isinstance(item, dict)]
+                if not hits:
+                    continue
+                chosen = hits[0]
+                product_id = chosen.get("id") if path == "/products" else _find_product_id_in_sku(chosen)
+                if path == "/skus" and not product_id:
+                    product_id = chosen.get("productId") or chosen.get("idProduct")
+                product = get_product(product_id, gumga_token, platform) if product_id else {}
+                if not product and path == "/products" and chosen.get("id"):
+                    product = chosen
+                if not product:
+                    continue
+                sku_id = _sku_id_from_listing(chosen) or _sku_id_by_ean(product)
+                return product, sku_id
+            except PermissionError:
+                raise
+            except Exception as exc:
+                print(f"[ANYMARKET ERRO] busca ean={value} {path} -> {type(exc).__name__}: {exc}")
+    return {}, ""
+
+
 def _chars_by_name(product: dict) -> dict[str, str]:
     out: dict[str, str] = {}
     for char in product.get("characteristics") or []:
@@ -518,7 +713,12 @@ def _resolve_kit(product: dict, chars: dict[str, str]) -> str:
     return ""
 
 
-def extract_anymarket_fields(product: dict, sku_hint: str = "", sku_id_hint: str = "") -> dict[str, str]:
+def extract_anymarket_fields(
+    product: dict,
+    sku_hint: str = "",
+    sku_id_hint: str = "",
+    ean_hint: str = "",
+) -> dict[str, str]:
     """Extrai campos completos do produto AnyMarket para comparação."""
     empty = {
         "any_id": "",
@@ -572,6 +772,13 @@ def extract_anymarket_fields(product: dict, sku_hint: str = "", sku_id_hint: str
     if not selected_sku and sku_hints:
         for sku in skus:
             if str(sku.get("partnerId") or "").strip() in sku_hints:
+                selected_sku = sku
+                break
+    ean_hint_digits = "".join(ch for ch in str(ean_hint or "") if ch.isdigit())
+    if not selected_sku and ean_hint_digits:
+        for sku in skus:
+            sku_ean = "".join(ch for ch in str(sku.get("ean") or "") if ch.isdigit())
+            if sku_ean and sku_ean == ean_hint_digits:
                 selected_sku = sku
                 break
     if not selected_sku and skus:

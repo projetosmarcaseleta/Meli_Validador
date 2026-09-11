@@ -266,6 +266,86 @@ def test_webhook_accepts_cat_objects_and_id_product(mock_post):
     assert sku_map["238034500"]["any_sku_id"] == "128196441"
 
 
+@patch("exporter.ANYMARKET_DB_HOST", "")
+@patch("exporter.ANYMARKET_DB_USER", "")
+@patch("exporter.ANYMARKET_SKU_WEBHOOK_URL", "https://example.test/hook")
+@patch("requests.post")
+def test_webhook_reads_product_id_nested_in_cat(mock_post):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "sku_map": {
+            "238034500": {
+                "cat": [{
+                    "mlb": "MLB5125868231",
+                    "status": "Ativo",
+                    "product_id": "7131999157",
+                    "sku_id": "128196441",
+                }],
+                "trad": [],
+            }
+        }
+    }
+    mock_post.return_value = mock_resp
+
+    sku_map = exporter._resolve_skus_from_anymarket_db(["238034500"])
+    assert sku_map["238034500"]["any_product_id"] == "7131999157"
+    assert sku_map["238034500"]["any_sku_id"] == "128196441"
+
+
+@patch("exporter.find_product_by_ean", return_value=({}, ""))
+@patch("exporter.resolve_product_by_marketplace_id")
+@patch("exporter.get_product")
+@patch("exporter.find_product_by_partner_id", return_value={})
+@patch("exporter.get_item_description", return_value="")
+@patch("exporter.validate_token")
+@patch("exporter._resolve_skus_from_anymarket_db")
+@patch("exporter.get_products_batch")
+def test_process_skus_uses_mlb_when_sku_and_product_id_miss(
+    mock_get_batch,
+    mock_db,
+    mock_token,
+    mock_desc,
+    mock_find,
+    mock_get_product,
+    mock_resolve,
+    mock_ean,
+):
+    mock_token.return_value = {"id": 1, "nickname": "SELETA"}
+    mock_db.return_value = {
+        "238034500": {
+            "cat": [("MLB5125868231", "active")],
+            "trad": [],
+        }
+    }
+    mock_get_batch.return_value = {
+        "MLB5125868231": {
+            "id": "MLB5125868231",
+            "title": "Apple iPhone 15 (256 Gb) - Preto",
+            "catalog_listing": True,
+            "status": "active",
+            "pictures": [],
+            "attributes": [{"id": "GTIN", "value_name": "0195949036828"}],
+        },
+    }
+    mock_resolve.return_value = (
+        {
+            "id": 7131999157,
+            "title": "iPhone Any pai",
+            "skus": [{"id": 128196441, "partnerId": "MTPG3BR/A", "title": "iPhone 15 256 Preto", "ean": "0195949036828"}],
+            "images": [{"url": "https://example.com/iphone.jpg", "main": True, "index": 1}],
+        },
+        "128196441",
+    )
+
+    res = exporter.process_skus_for_catalog_audit(["238034500"], "FAKE_TOKEN", gumga_token="GUMGA")
+    item = res["items"][0]
+    assert item["anymarket"]["any_id"] == "7131999157"
+    assert item["anymarket"]["title"] == "iPhone 15 256 Preto"
+    mock_resolve.assert_called()
+    mock_get_product.assert_not_called()
+
+
 def test_process_skus_for_catalog_excel_independent_decisions():
     items = [
         {
