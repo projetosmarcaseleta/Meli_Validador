@@ -214,6 +214,31 @@ def test_process_skus_uses_replica_product_id_when_sku_filter_misses(
     mock_get_product.assert_called()
 
 
+@patch("exporter.ANYMARKET_DB_HOST", "")
+@patch("exporter.ANYMARKET_DB_USER", "")
+@patch("exporter.ANYMARKET_SKU_WEBHOOK_URL", "https://example.test/hook")
+@patch("requests.post")
+def test_webhook_attaches_anymarket_product_id(mock_post):
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.json.return_value = {
+        "sku_map": {
+            "238834500": {
+                "cat": [["MLB5125888231", "active"]],
+                "trad": [],
+                "product_id": "7131999157",
+                "sku_id": "128000001",
+            }
+        }
+    }
+    mock_post.return_value = mock_resp
+
+    sku_map = exporter._resolve_skus_from_anymarket_db(["238834500"])
+    assert sku_map["238834500"]["cat"][0][0] == "MLB5125888231"
+    assert sku_map["238834500"]["any_product_id"] == "7131999157"
+    assert sku_map["238834500"]["any_sku_id"] == "128000001"
+
+
 def test_process_skus_for_catalog_excel_independent_decisions():
     items = [
         {

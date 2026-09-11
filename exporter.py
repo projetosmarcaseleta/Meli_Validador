@@ -88,6 +88,27 @@ def _any_product_id_from_payload(val: dict) -> str:
     return ""
 
 
+def _any_sku_id_from_payload(val: dict) -> str:
+    if not isinstance(val, dict):
+        return ""
+    for key in ("any_sku_id", "sku_id", "id_sku", "idSku"):
+        sid = str(val.get(key) or "").strip()
+        if sid:
+            return sid
+    return ""
+
+
+def _apply_webhook_product_ids(sku_map: dict[str, dict], sku: str, val: dict) -> None:
+    _set_any_product_id(sku_map, sku, _any_product_id_from_payload(val))
+    sid = _any_sku_id_from_payload(val)
+    if not sid:
+        return
+    if sku not in sku_map:
+        sku_map[sku] = {"cat": [], "trad": []}
+    if not str(sku_map[sku].get("any_sku_id") or "").strip():
+        sku_map[sku]["any_sku_id"] = sid
+
+
 def _set_any_product_id(sku_map: dict[str, dict], sku: str, product_id: str) -> None:
     pid = str(product_id or "").strip()
     if not pid:
@@ -834,7 +855,7 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
             import requests as req
             resp = req.post(
                 ANYMARKET_SKU_WEBHOOK_URL,
-                json={"skus": skus},
+                json={"skus": skus, "include": ["product_id", "sku_id"]},
                 timeout=30,
             )
             if resp.status_code == 200:
@@ -847,8 +868,19 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
                         trad_list = [(str(m[0]).upper(), str(m[1])) for m in val.get("trad", []) if m and len(m) >= 2]
                         sku_map[s_clean]["cat"] = cat_list
                         sku_map[s_clean]["trad"] = trad_list
-                        _set_any_product_id(sku_map, s_clean, _any_product_id_from_payload(val if isinstance(val, dict) else {}))
-                if any(sku_map[s]["cat"] or sku_map[s]["trad"] for s in sku_map):
+                        _apply_webhook_product_ids(sku_map, s_clean, val if isinstance(val, dict) else {})
+                webhook_hit = any(sku_map[s]["cat"] or sku_map[s]["trad"] for s in sku_map)
+                missing_pid = [
+                    s for s in sku_map
+                    if (sku_map[s]["cat"] or sku_map[s]["trad"])
+                    and not str(sku_map[s].get("any_product_id") or "").strip()
+                ]
+                if webhook_hit and missing_pid:
+                    print(
+                        f"[ANYMARKET] webhook sem product_id para {len(missing_pid)} SKU(s)",
+                        flush=True,
+                    )
+                if webhook_hit and (not missing_pid or not ANYMARKET_DB_HOST or not ANYMARKET_DB_USER):
                     return sku_map
             else:
                 print(f"[N8N WEBHOOK ERRO] HTTP {resp.status_code}: {resp.text[:200]}")
@@ -976,7 +1008,6 @@ def _resolve_mlbs_from_anymarket_db(mlbs: list[str]) -> dict[str, dict]:
                         status = str(row[3] or "")
                         if mlb.startswith("MLB") and s:
                             _append_mlb_slot(sku_map, s, mlb, is_cat == 1, status)
-                _attach_anymarket_product_ids_from_db(cur, sku_map, list(sku_map.keys()))
                 _attach_anymarket_product_ids_from_db(cur, sku_map, list(sku_map.keys()))
     except Exception as exc:
         _last_db_error = str(exc)
