@@ -173,16 +173,30 @@ def _sku_lookup_candidates(sku: str) -> list[str]:
 
 def _partner_ids_from_item(item: dict) -> set[str]:
     ids: set[str] = set()
-    ext = str(item.get("externalIdProduct") or "").strip()
-    if ext:
-        ids.add(ext)
+    if not isinstance(item, dict):
+        return ids
+    for key in ("partnerId", "externalIdProduct", "sku"):
+        val = str(item.get(key) or "").strip()
+        if val:
+            ids.add(val)
     for sku in item.get("skus") or []:
         if not isinstance(sku, dict):
             continue
-        pid = str(sku.get("partnerId") or "").strip()
-        if pid:
-            ids.add(pid)
+        for key in ("partnerId", "sku"):
+            val = str(sku.get(key) or "").strip()
+            if val:
+                ids.add(val)
     return ids
+
+
+def _item_matches_sku(item: dict, candidate_set: set[str]) -> bool:
+    found = _partner_ids_from_item(item)
+    if candidate_set & found:
+        return True
+    expanded: set[str] = set()
+    for pid in found:
+        expanded.update(_sku_lookup_candidates(pid))
+    return bool(candidate_set & expanded)
 
 
 def find_product_by_partner_id(
@@ -192,7 +206,8 @@ def find_product_by_partner_id(
 ) -> dict:
     """
     Localiza o produto AnyMarket pelo partnerId/SKU do cliente.
-    Usa GET /products?sku= e GET /skus?partnerId=, depois GET /products/{id}.
+    Usa GET /products?sku= (filtro oficial) e GET /skus/marketplaces?partnerID=,
+    depois GET /products/{id}.
     """
     candidates = _sku_lookup_candidates(partner_id)
     if not candidates:
@@ -201,6 +216,13 @@ def find_product_by_partner_id(
     base = ANYMARKET_API_BASE_URL.rstrip("/")
     headers = _headers(gumga_token, platform)
     candidate_set = set(candidates)
+
+    def _auth_error(resp) -> None:
+        if resp.status_code != 401:
+            return
+        body = _content(resp)
+        msg = body.get("message") if isinstance(body, dict) else ""
+        raise PermissionError(msg or "Token AnyMarket inválido (401).")
 
     def _full_product(product_id, fallback: dict | None = None) -> dict:
         if product_id is None:
@@ -217,17 +239,23 @@ def find_product_by_partner_id(
                 proxies=_PROXIES,
                 timeout=HTTP_TIMEOUT,
             )
-            if resp.status_code == 401:
-                body = _content(resp)
-                msg = body.get("message") if isinstance(body, dict) else ""
-                raise PermissionError(msg or "Token AnyMarket inválido (401).")
+            _auth_error(resp)
             if resp.status_code >= 400:
                 continue
-            for item in _extract_content_list(resp.json()):
-                if not isinstance(item, dict):
-                    continue
-                if candidate_set & _partner_ids_from_item(item):
-                    return _full_product(item.get("id"), item)
+            hits = [item for item in _extract_content_list(resp.json()) if isinstance(item, dict)]
+            unique_full: dict | None = None
+            for item in hits:
+                full = _full_product(item.get("id"), item)
+                if _item_matches_sku(full, candidate_set) or _item_matches_sku(item, candidate_set):
+                    return full
+                if unique_full is None:
+                    unique_full = full
+                else:
+                    unique_full = None
+                    break
+            # O filtro sku= da API já restringe aos produtos daquele SKU.
+            if unique_full and unique_full.get("id"):
+                return unique_full
         except PermissionError:
             raise
         except Exception as exc:
@@ -235,31 +263,42 @@ def find_product_by_partner_id(
 
         try:
             resp = _session().get(
-                f"{base}/skus",
+                f"{base}/skus/marketplaces",
                 headers=headers,
-                params={"partnerId": sku, "limit": 10},
+                params={"partnerID": sku},
                 proxies=_PROXIES,
                 timeout=HTTP_TIMEOUT,
             )
-            if resp.status_code == 401:
-                body = _content(resp)
-                msg = body.get("message") if isinstance(body, dict) else ""
-                raise PermissionError(msg or "Token AnyMarket inválido (401).")
+            _auth_error(resp)
             if resp.status_code >= 400:
                 continue
-            for item in _extract_content_list(resp.json()):
-                if not isinstance(item, dict):
-                    continue
-                sku_partner = str(item.get("partnerId") or "").strip()
-                if sku_partner not in candidate_set:
-                    continue
-                product_id = _find_product_id_in_sku(item)
-                if product_id is not None:
-                    return _full_product(product_id)
+            listings = resp.json()
+            if isinstance(listings, dict):
+                listings = _extract_content_list(listings)
+            if not isinstance(listings, list) or not listings:
+                continue
+            # SKU existe no hub; tenta o produto completo de novo pelo filtro oficial.
+            resp = _session().get(
+                f"{base}/products",
+                headers=headers,
+                params={"sku": sku, "limit": 10},
+                proxies=_PROXIES,
+                timeout=HTTP_TIMEOUT,
+            )
+            _auth_error(resp)
+            if resp.status_code >= 400:
+                continue
+            hits = [item for item in _extract_content_list(resp.json()) if isinstance(item, dict)]
+            if len(hits) == 1:
+                return _full_product(hits[0].get("id"), hits[0])
+            for item in hits:
+                full = _full_product(item.get("id"), item)
+                if _item_matches_sku(full, candidate_set) or _item_matches_sku(item, candidate_set):
+                    return full
         except PermissionError:
             raise
         except Exception as exc:
-            print(f"[ANYMARKET ERRO] busca skus partnerId={sku} -> {type(exc).__name__}: {exc}")
+            print(f"[ANYMARKET ERRO] busca skus/marketplaces partnerID={sku} -> {type(exc).__name__}: {exc}")
 
     return {}
 
@@ -479,7 +518,7 @@ def _resolve_kit(product: dict, chars: dict[str, str]) -> str:
     return ""
 
 
-def extract_anymarket_fields(product: dict, sku_hint: str = "") -> dict[str, str]:
+def extract_anymarket_fields(product: dict, sku_hint: str = "", sku_id_hint: str = "") -> dict[str, str]:
     """Extrai campos completos do produto AnyMarket para comparação."""
     empty = {
         "any_id": "",
@@ -523,8 +562,14 @@ def extract_anymarket_fields(product: dict, sku_hint: str = "") -> dict[str, str
     skus = [s for s in (product.get("skus") or []) if isinstance(s, dict)]
 
     selected_sku = None
+    sku_id_hint = str(sku_id_hint or "").strip()
+    if sku_id_hint:
+        for sku in skus:
+            if str(sku.get("id") or "").strip() == sku_id_hint:
+                selected_sku = sku
+                break
     sku_hints = set(_sku_lookup_candidates(sku_hint)) if sku_hint else set()
-    if sku_hints:
+    if not selected_sku and sku_hints:
         for sku in skus:
             if str(sku.get("partnerId") or "").strip() in sku_hints:
                 selected_sku = sku

@@ -1,4 +1,11 @@
-from anymarket_api import _sku_lookup_candidates, extract_anymarket_fields
+from unittest.mock import MagicMock, patch
+
+from anymarket_api import (
+    _item_matches_sku,
+    _sku_lookup_candidates,
+    extract_anymarket_fields,
+    find_product_by_partner_id,
+)
 
 
 def test_sku_lookup_candidates_keep_leading_zeros():
@@ -171,3 +178,35 @@ def test_extract_images_keep_all_when_sku_has_no_visual_variation():
     }
     fields = extract_anymarket_fields(product, sku_hint="SKU-110")
     assert fields["images_list"] == ["https://cdn.example/a.jpg", "https://cdn.example/b.jpg"]
+
+
+def test_item_matches_sku_expands_leading_zeros():
+    item = {"skus": [{"partnerId": "085865500"}]}
+    assert _item_matches_sku(item, {"85865500", "085865500"})
+
+
+def test_find_product_accepts_unique_sku_filter_without_nested_skus():
+    class FakeResp:
+        def __init__(self, payload, status=200):
+            self.status_code = status
+            self._payload = payload
+            self.text = ""
+
+        def json(self):
+            return self._payload
+
+    session = MagicMock()
+    session.get.return_value = FakeResp({
+        "content": [{"id": 7131999157, "title": "iPhone sem skus na listagem"}],
+    })
+    full = {
+        "id": 7131999157,
+        "title": "iPhone 15 256 Preto",
+        "skus": [{"partnerId": "238834500", "title": "iPhone SKU"}],
+    }
+    with patch("anymarket_api._session", return_value=session), patch(
+        "anymarket_api.get_product", return_value=full
+    ):
+        product = find_product_by_partner_id("238834500", "TOKEN", "SELETA")
+    assert product["id"] == 7131999157
+    assert product["skus"][0]["partnerId"] == "238834500"

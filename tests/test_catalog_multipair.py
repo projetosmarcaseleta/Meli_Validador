@@ -174,6 +174,46 @@ def test_process_skus_attaches_anymarket_product(mock_get_batch, mock_db, mock_t
     mock_find.assert_called()
 
 
+@patch("exporter.get_product")
+@patch("exporter.find_product_by_partner_id", return_value={})
+@patch("exporter.get_item_description", return_value="")
+@patch("exporter.validate_token")
+@patch("exporter._resolve_skus_from_anymarket_db")
+@patch("exporter.get_products_batch")
+def test_process_skus_uses_replica_product_id_when_sku_filter_misses(
+    mock_get_batch, mock_db, mock_token, mock_desc, mock_find, mock_get_product
+):
+    mock_token.return_value = {"id": 1, "nickname": "SELETA"}
+    mock_db.return_value = {
+        "238834500": {
+            "cat": [("MLB5125888231", "active")],
+            "trad": [],
+            "any_product_id": "7131999157",
+        }
+    }
+    mock_get_batch.return_value = {
+        "MLB5125888231": {
+            "id": "MLB5125888231",
+            "title": "iPhone Cat",
+            "catalog_listing": True,
+            "status": "active",
+            "pictures": [],
+        },
+    }
+    mock_get_product.return_value = {
+        "id": 7131999157,
+        "title": "iPhone Any pai",
+        "skus": [{"id": 9, "partnerId": "MTMA3BZ/A", "title": "iPhone 15 256 Preto"}],
+        "images": [{"url": "https://example.com/iphone.jpg", "main": True, "index": 1}],
+    }
+
+    res = exporter.process_skus_for_catalog_audit(["238834500"], "FAKE_TOKEN", gumga_token="GUMGA")
+    item = res["items"][0]
+    assert item["anymarket"]["any_id"] == "7131999157"
+    assert item["anymarket"]["title"] == "iPhone 15 256 Preto"
+    mock_get_product.assert_called()
+
+
 def test_process_skus_for_catalog_excel_independent_decisions():
     items = [
         {

@@ -61,6 +61,12 @@ def _merge_sku_maps(target: dict[str, dict], source: dict[str, dict]) -> None:
                 if mlb not in seen:
                     target[sku][side].append((mlb, status))
                     seen.add(mlb)
+        pid = str(data.get("any_product_id") or "").strip()
+        if pid and not str(target[sku].get("any_product_id") or "").strip():
+            target[sku]["any_product_id"] = pid
+        sid = str(data.get("any_sku_id") or "").strip()
+        if sid and not str(target[sku].get("any_sku_id") or "").strip():
+            target[sku]["any_sku_id"] = sid
 
 
 def _append_mlb_slot(sku_map: dict[str, dict], sku: str, mlb: str, is_catalog: bool, status: str = "") -> None:
@@ -70,6 +76,118 @@ def _append_mlb_slot(sku_map: dict[str, dict], sku: str, mlb: str, is_catalog: b
     existing = {m for m, _ in sku_map[sku][side]}
     if mlb not in existing:
         sku_map[sku][side].append((mlb, status or "active"))
+
+
+def _any_product_id_from_payload(val: dict) -> str:
+    if not isinstance(val, dict):
+        return ""
+    for key in ("any_product_id", "product_id", "id_product", "idProduct"):
+        pid = str(val.get(key) or "").strip()
+        if pid:
+            return pid
+    return ""
+
+
+def _set_any_product_id(sku_map: dict[str, dict], sku: str, product_id: str) -> None:
+    pid = str(product_id or "").strip()
+    if not pid:
+        return
+    if sku not in sku_map:
+        sku_map[sku] = {"cat": [], "trad": []}
+    if not str(sku_map[sku].get("any_product_id") or "").strip():
+        sku_map[sku]["any_product_id"] = pid
+
+
+def _db_table_columns(cur, table_name: str) -> set[str]:
+    cur.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'anymarket_prd' AND table_name = %s
+        """,
+        (table_name,),
+    )
+    return {str(row[0]).lower() for row in cur.fetchall()}
+
+
+def _attach_anymarket_product_ids_from_db(cur, sku_map: dict[str, dict], skus: list[str]) -> None:
+    """Preenche any_product_id via réplica (sku_in_marketplace / partner_id → product_id)."""
+    pending = [s for s in skus if s and not str((sku_map.get(s) or {}).get("any_product_id") or "").strip()]
+    if not pending:
+        return
+
+    from psycopg2 import sql as psql
+
+    sm_cols = _db_table_columns(cur, "sku_marketplace")
+    sku_cols = _db_table_columns(cur, "sku")
+    queries: list[tuple[str, list[str]]] = []
+
+    if "sku_in_marketplace" in sm_cols and "product_id" in sm_cols:
+        queries.append(
+            (
+                """
+                SELECT sm.sku_in_marketplace, sm.product_id
+                FROM anymarket_prd.sku_marketplace AS sm
+                WHERE sm.sku_in_marketplace IN ({skus})
+                  AND sm.product_id IS NOT NULL
+                """,
+                pending,
+            )
+        )
+    if "sku_in_marketplace" in sm_cols and "sku_id" in sm_cols and "id" in sku_cols and "product_id" in sku_cols:
+        queries.append(
+            (
+                """
+                SELECT sm.sku_in_marketplace, s.product_id, s.id
+                FROM anymarket_prd.sku_marketplace AS sm
+                JOIN anymarket_prd.sku AS s ON s.id = sm.sku_id
+                WHERE sm.sku_in_marketplace IN ({skus})
+                  AND s.product_id IS NOT NULL
+                """,
+                pending,
+            )
+        )
+    partner_col = "partner_id" if "partner_id" in sku_cols else ("partnerid" if "partnerid" in sku_cols else "")
+    if partner_col and "product_id" in sku_cols:
+        queries.append(
+            (
+                f"""
+                SELECT s.{partner_col}, s.product_id, s.id
+                FROM anymarket_prd.sku AS s
+                WHERE s.{partner_col} IN ({{skus}})
+                  AND s.product_id IS NOT NULL
+                """,
+                pending,
+            )
+        )
+
+    for sql_text, batch_skus in queries:
+        still = [s for s in batch_skus if not str((sku_map.get(s) or {}).get("any_product_id") or "").strip()]
+        if not still:
+            break
+        try:
+            placeholders = psql.SQL(", ").join(psql.Placeholder() for _ in still)
+            query = psql.SQL(sql_text).format(skus=placeholders)
+            cur.execute(query, still)
+            for row in cur.fetchall():
+                sku_key = str(row[0] or "").strip()
+                product_id = str(row[1] or "").strip()
+                sku_id = str(row[2] or "").strip() if len(row) > 2 else ""
+                if sku_key and product_id:
+                    _set_any_product_id(sku_map, sku_key, product_id)
+                if sku_key and sku_id:
+                    if sku_key not in sku_map:
+                        sku_map[sku_key] = {"cat": [], "trad": []}
+                    if not str(sku_map[sku_key].get("any_sku_id") or "").strip():
+                        sku_map[sku_key]["any_sku_id"] = sku_id
+        except Exception as exc:
+            print(f"[DB ANYMARKET] lookup product_id ignorado ({type(exc).__name__})", flush=True)
+            try:
+                cur.connection.rollback()
+            except Exception:
+                pass
+
+
 
 
 def _enrich_sku_from_ml_search(sku: str, user_id, token: str, sku_map: dict[str, dict]) -> None:
@@ -729,6 +847,7 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
                         trad_list = [(str(m[0]).upper(), str(m[1])) for m in val.get("trad", []) if m and len(m) >= 2]
                         sku_map[s_clean]["cat"] = cat_list
                         sku_map[s_clean]["trad"] = trad_list
+                        _set_any_product_id(sku_map, s_clean, _any_product_id_from_payload(val if isinstance(val, dict) else {}))
                 if any(sku_map[s]["cat"] or sku_map[s]["trad"] for s in sku_map):
                     return sku_map
             else:
@@ -779,6 +898,7 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
                         status = str(row[3] or "")
                         if s in sku_map and mlb.startswith("MLB"):
                             _append_mlb_slot(sku_map, s, mlb, is_cat == 1, status)
+                _attach_anymarket_product_ids_from_db(cur, sku_map, skus)
     except Exception as exc:
         _last_db_error = str(exc)
         print(f"[DB ANYMARKET ERRO] Falha ao consultar réplica AnyMarket: {exc}")
@@ -856,6 +976,8 @@ def _resolve_mlbs_from_anymarket_db(mlbs: list[str]) -> dict[str, dict]:
                         status = str(row[3] or "")
                         if mlb.startswith("MLB") and s:
                             _append_mlb_slot(sku_map, s, mlb, is_cat == 1, status)
+                _attach_anymarket_product_ids_from_db(cur, sku_map, list(sku_map.keys()))
+                _attach_anymarket_product_ids_from_db(cur, sku_map, list(sku_map.keys()))
     except Exception as exc:
         _last_db_error = str(exc)
         print(f"[DB ANYMARKET ERRO] Falha ao consultar MLB na réplica: {exc}")
@@ -892,6 +1014,8 @@ def _fetch_anymarket_fields_by_skus(
     gumga_token: str,
     any_platform: str | None,
     progress_callback=None,
+    product_ids_by_sku: dict[str, str] | None = None,
+    sku_ids_by_sku: dict[str, str] | None = None,
 ) -> dict[str, dict]:
     """Busca o produto AnyMarket pela API v2, filtrando só pelo SKU (partnerId)."""
     unique = list(dict.fromkeys(s.strip() for s in skus if s and str(s).strip() and not _is_mlb(s)))
@@ -902,8 +1026,11 @@ def _fetch_anymarket_fields_by_skus(
     gumga = gumga_token.strip()
     total = len(unique)
     completed = 0
+    ids_by_sku = product_ids_by_sku or {}
+    sku_ids = sku_ids_by_sku or {}
 
     def _one(sku: str) -> tuple[str, dict]:
+        product = {}
         try:
             product = find_product_by_partner_id(sku, gumga, any_platform)
         except PermissionError as exc:
@@ -912,7 +1039,24 @@ def _fetch_anymarket_fields_by_skus(
         except Exception as exc:
             print(f"[ANYMARKET] SKU {sku}: {type(exc).__name__}: {exc}", flush=True)
             product = {}
-        fields = extract_anymarket_fields(product, sku_hint=sku) if product else extract_anymarket_fields({})
+        if not product:
+            fallback_id = str(ids_by_sku.get(sku) or "").strip()
+            if fallback_id:
+                try:
+                    product = get_product(fallback_id, gumga, any_platform) or {}
+                    if product:
+                        print(f"[ANYMARKET] SKU {sku}: cadastro via réplica id={fallback_id}", flush=True)
+                except PermissionError as exc:
+                    print(f"[ANYMARKET] SKU {sku}: token recusado ({exc})", flush=True)
+                    product = {}
+                except Exception as exc:
+                    print(f"[ANYMARKET] SKU {sku}: GET product {fallback_id} {type(exc).__name__}: {exc}", flush=True)
+                    product = {}
+        fields = (
+            extract_anymarket_fields(product, sku_hint=sku, sku_id_hint=str(sku_ids.get(sku) or ""))
+            if product
+            else extract_anymarket_fields({})
+        )
         if not (fields.get("any_id") or fields.get("title")):
             print(f"[ANYMARKET] SKU {sku}: cadastro não encontrado", flush=True)
         else:
@@ -1075,7 +1219,20 @@ def process_skus_for_catalog_audit(
         if progress_callback:
             progress_callback(88, 100, "Buscando cadastro AnyMarket por SKU...")
         any_by_sku = _fetch_anymarket_fields_by_skus(
-            lookup_skus_for_any, gumga.strip(), platform, progress_callback
+            lookup_skus_for_any,
+            gumga.strip(),
+            platform,
+            progress_callback,
+            product_ids_by_sku={
+                sku: str((db_map.get(sku) or {}).get("any_product_id") or "").strip()
+                for sku in lookup_skus_for_any
+                if str((db_map.get(sku) or {}).get("any_product_id") or "").strip()
+            },
+            sku_ids_by_sku={
+                sku: str((db_map.get(sku) or {}).get("any_sku_id") or "").strip()
+                for sku in lookup_skus_for_any
+                if str((db_map.get(sku) or {}).get("any_sku_id") or "").strip()
+            },
         )
         found_n = sum(1 for f in any_by_sku.values() if (f or {}).get("any_id"))
         print(f"[ANYMARKET] {found_n}/{len(lookup_skus_for_any)} SKU(s) com cadastro")
