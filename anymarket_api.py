@@ -137,6 +137,55 @@ def get_product(product_id: int | str, gumga_token: str, platform: str | None = 
         return {}
 
 
+def get_product_sku(
+    product_id: int | str,
+    sku_id: int | str,
+    gumga_token: str,
+    platform: str | None = None,
+) -> dict:
+    """GET /products/{productId}/skus/{skuId} – detalhes do SKU."""
+    pid = str(product_id or "").strip()
+    sid = str(sku_id or "").strip()
+    if not pid or not sid:
+        return {}
+    url = f"{ANYMARKET_API_BASE_URL.rstrip('/')}/products/{pid}/skus/{sid}"
+    try:
+        resp = _session().get(
+            url,
+            headers=_headers(gumga_token, platform),
+            proxies=_PROXIES,
+            timeout=HTTP_TIMEOUT,
+        )
+        if resp.status_code == 404:
+            return {}
+        if resp.status_code == 401:
+            body = _content(resp)
+            msg = body.get("message") if isinstance(body, dict) else ""
+            raise PermissionError(msg or "Token AnyMarket inválido (401).")
+        resp.raise_for_status()
+        data = resp.json()
+        return data if isinstance(data, dict) else {}
+    except PermissionError:
+        raise
+    except Exception as exc:
+        print(f"[ANYMARKET ERRO] GET {url} -> {type(exc).__name__}: {exc}")
+        return {}
+
+
+def merge_sku_into_product(product: dict, sku: dict) -> dict:
+    """Garante que o SKU específico fique em product.skus[0] para a extração."""
+    if not product:
+        return {}
+    if not sku:
+        return product
+    merged = dict(product)
+    sku_id = str(sku.get("id") or "").strip()
+    current = [s for s in (merged.get("skus") or []) if isinstance(s, dict)]
+    rest = [s for s in current if not sku_id or str(s.get("id") or "").strip() != sku_id]
+    merged["skus"] = [sku, *rest]
+    return merged
+
+
 def _extract_content_list(payload: Any) -> list:
     if isinstance(payload, list):
         return payload

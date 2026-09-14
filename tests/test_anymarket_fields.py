@@ -7,6 +7,8 @@ from anymarket_api import (
     extract_anymarket_fields,
     find_product_by_ean,
     find_product_by_partner_id,
+    get_product_sku,
+    merge_sku_into_product,
     resolve_product_by_marketplace_id,
 )
 
@@ -213,6 +215,43 @@ def test_find_product_accepts_unique_sku_filter_without_nested_skus():
         product = find_product_by_partner_id("238834500", "TOKEN", "SELETA")
     assert product["id"] == 7131999157
     assert product["skus"][0]["partnerId"] == "238834500"
+
+
+def test_merge_sku_into_product_puts_specific_sku_first():
+    product = {
+        "id": 7131999157,
+        "skus": [
+            {"id": 1, "title": "Outra cor"},
+            {"id": 128109841, "title": "Antigo"},
+        ],
+    }
+    sku = {"id": 128109841, "title": "iPhone 15 256 Preto", "ean": "0195949036828"}
+    merged = merge_sku_into_product(product, sku)
+    assert merged["skus"][0]["title"] == "iPhone 15 256 Preto"
+    assert [s["id"] for s in merged["skus"]] == [128109841, 1]
+
+
+def test_get_product_sku_calls_official_endpoint():
+    class FakeResp:
+        def __init__(self, payload, status=200):
+            self.status_code = status
+            self._payload = payload
+            self.text = ""
+
+        def json(self):
+            return self._payload
+
+        def raise_for_status(self):
+            return None
+
+    session = MagicMock()
+    session.get.return_value = FakeResp({"id": 128109841, "title": "iPhone SKU", "partnerId": "MTPG3BR/A"})
+    with patch("anymarket_api._session", return_value=session):
+        sku = get_product_sku("7131999157", "128109841", "TOKEN", "SELETA")
+    assert sku["id"] == 128109841
+    assert sku["title"] == "iPhone SKU"
+    args, kwargs = session.get.call_args
+    assert args[0].endswith("/products/7131999157/skus/128109841")
 
 
 def test_product_id_from_nested_listing():

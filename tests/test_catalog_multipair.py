@@ -212,6 +212,58 @@ def test_process_skus_uses_replica_product_id_when_sku_filter_misses(
     assert item["anymarket"]["any_id"] == "7131999157"
     assert item["anymarket"]["title"] == "iPhone 15 256 Preto"
     mock_get_product.assert_called()
+    mock_find.assert_not_called()
+
+
+@patch("exporter.get_product_sku")
+@patch("exporter.get_product")
+@patch("exporter.find_product_by_partner_id")
+@patch("exporter.get_item_description", return_value="")
+@patch("exporter.validate_token")
+@patch("exporter._resolve_skus_from_anymarket_db")
+@patch("exporter.get_products_batch")
+def test_process_skus_uses_official_product_and_sku_endpoints(
+    mock_get_batch, mock_db, mock_token, mock_desc, mock_find, mock_get_product, mock_get_sku
+):
+    mock_token.return_value = {"id": 1, "nickname": "SELETA"}
+    mock_db.return_value = {
+        "238034500": {
+            "cat": [("MLB5125868231", "active")],
+            "trad": [],
+            "any_product_id": "7131999157",
+            "any_sku_id": "128109841",
+        }
+    }
+    mock_get_batch.return_value = {
+        "MLB5125868231": {
+            "id": "MLB5125868231",
+            "title": "Apple iPhone 15 (256 Gb) - Preto",
+            "catalog_listing": True,
+            "status": "active",
+            "pictures": [],
+        },
+    }
+    mock_get_product.return_value = {
+        "id": 7131999157,
+        "title": "iPhone Any pai",
+        "skus": [{"id": 1, "partnerId": "OUTRO", "title": "Outra variação"}],
+        "images": [{"url": "https://example.com/iphone.jpg", "main": True, "index": 1}],
+    }
+    mock_get_sku.return_value = {
+        "id": 128109841,
+        "partnerId": "MTPG3BR/A",
+        "title": "iPhone 15 256 Preto",
+        "ean": "0195949036828",
+    }
+
+    res = exporter.process_skus_for_catalog_audit(["238034500"], "FAKE_TOKEN", gumga_token="GUMGA")
+    item = res["items"][0]
+    assert item["anymarket"]["any_id"] == "7131999157"
+    assert item["anymarket"]["any_sku_id"] == "128109841"
+    assert item["anymarket"]["title"] == "iPhone 15 256 Preto"
+    mock_get_product.assert_called_with("7131999157", "GUMGA", "SELETA")
+    mock_get_sku.assert_called_with("7131999157", "128109841", "GUMGA", "SELETA")
+    mock_find.assert_not_called()
 
 
 @patch("exporter.ANYMARKET_DB_HOST", "")

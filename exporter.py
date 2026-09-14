@@ -13,6 +13,8 @@ from anymarket_api import (
     find_product_by_ean,
     find_product_by_partner_id,
     get_product,
+    get_product_sku,
+    merge_sku_into_product,
     normalize_attr_key,
     resolve_product_by_marketplace_id,
 )
@@ -1129,27 +1131,35 @@ def _fetch_anymarket_fields_by_skus(
         product = {}
         sku_id_hint = str(sku_ids.get(sku) or "").strip()
         ean_hint = str(ean_map.get(sku) or "").strip()
-        try:
-            product = find_product_by_partner_id(sku, gumga, any_platform)
-        except PermissionError as exc:
-            print(f"[ANYMARKET] SKU {sku}: token recusado ({exc})", flush=True)
-            product = {}
-        except Exception as exc:
-            print(f"[ANYMARKET] SKU {sku}: {type(exc).__name__}: {exc}", flush=True)
-            product = {}
+        product_id = str(ids_by_sku.get(sku) or "").strip()
+        if product_id:
+            try:
+                product = get_product(product_id, gumga, any_platform) or {}
+                if product and sku_id_hint:
+                    sku_detail = get_product_sku(product_id, sku_id_hint, gumga, any_platform) or {}
+                    if sku_detail:
+                        product = merge_sku_into_product(product, sku_detail)
+                if product:
+                    print(
+                        f"[ANYMARKET] SKU {sku}: GET /products/{product_id}"
+                        + (f"/skus/{sku_id_hint}" if sku_id_hint else ""),
+                        flush=True,
+                    )
+            except PermissionError as exc:
+                print(f"[ANYMARKET] SKU {sku}: token recusado ({exc})", flush=True)
+                product = {}
+            except Exception as exc:
+                print(f"[ANYMARKET] SKU {sku}: GET product {product_id} {type(exc).__name__}: {exc}", flush=True)
+                product = {}
         if not product:
-            fallback_id = str(ids_by_sku.get(sku) or "").strip()
-            if fallback_id:
-                try:
-                    product = get_product(fallback_id, gumga, any_platform) or {}
-                    if product:
-                        print(f"[ANYMARKET] SKU {sku}: cadastro via réplica id={fallback_id}", flush=True)
-                except PermissionError as exc:
-                    print(f"[ANYMARKET] SKU {sku}: token recusado ({exc})", flush=True)
-                    product = {}
-                except Exception as exc:
-                    print(f"[ANYMARKET] SKU {sku}: GET product {fallback_id} {type(exc).__name__}: {exc}", flush=True)
-                    product = {}
+            try:
+                product = find_product_by_partner_id(sku, gumga, any_platform)
+            except PermissionError as exc:
+                print(f"[ANYMARKET] SKU {sku}: token recusado ({exc})", flush=True)
+                product = {}
+            except Exception as exc:
+                print(f"[ANYMARKET] SKU {sku}: {type(exc).__name__}: {exc}", flush=True)
+                product = {}
         if not product:
             for mlb in mlb_map.get(sku) or []:
                 try:
