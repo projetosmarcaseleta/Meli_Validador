@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from urllib.parse import quote
+import os
 import re
 
 import requests
@@ -12,6 +13,7 @@ from anymarket_auth import resolve_backoffice_credentials
 from config import (
     ANYMARKET_SKU_WEBHOOK_URL,
     ANYMARKET_SUPPORT_BASE_URL,
+    ANYMARKET_SUPPORT_DIRECT,
     MELI_TOKEN_WEBHOOK_URL,
     SELETA_SKU_WEBHOOK_URL,
     get_support_token,
@@ -55,17 +57,14 @@ def support_direct_access_enabled() -> bool:
     VPS/produção: URL *.internal só funciona com VPN.
     Use ANYMARKET_SUPPORT_DIRECT=1 no .env local quando a VPN alcança a support-app.
     """
-    import os
-
     if not is_support_configured():
         return False
     base = (ANYMARKET_SUPPORT_BASE_URL or "").lower()
     if any(token in base for token in (".internal", "localhost", "127.0.0.1")):
-        return os.environ.get("ANYMARKET_SUPPORT_DIRECT", "").strip().lower() in (
-            "1",
-            "true",
-            "yes",
-        )
+        if ANYMARKET_SUPPORT_DIRECT:
+            return True
+        current = (os.environ.get("ANYMARKET_SUPPORT_DIRECT") or "").strip().lower()
+        return current in ("1", "true", "yes")
     return True
 
 

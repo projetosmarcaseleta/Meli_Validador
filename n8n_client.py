@@ -16,6 +16,11 @@ def format_error_value(value: object, *, fallback: str = "") -> str:
         text = value.strip()
         if not text or text == "[object Object]":
             return fallback
+        lower = text.lower()
+        if "whitelabel error page" in lower or "status=401" in lower or "not authorized" in lower:
+            return "401 Unauthorized — token/credencial da support-app inválida ou expirada."
+        if len(text) > 280:
+            return text[:280] + "…"
         return text
     if isinstance(value, dict):
         for key in ("message", "errorMessage", "description", "detail", "error"):

@@ -89,6 +89,12 @@ ANYMARKET_SUPPORT_BASE_URL = os.environ.get(
     "http://support-app.anymarket.internal",
 ).strip().rstrip("/")
 ANYMARKET_SUPPORT_TOKEN = os.environ.get("ANYMARKET_SUPPORT_TOKEN", "").strip()
+# 1 = Flask local/VPN pode chamar support-app.internal após falha do n8n
+ANYMARKET_SUPPORT_DIRECT = os.environ.get("ANYMARKET_SUPPORT_DIRECT", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 
 def get_support_token() -> str:

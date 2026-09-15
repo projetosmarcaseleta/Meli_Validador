@@ -300,6 +300,7 @@ def api_clients_select():
 
     support_oi = parse_support_oi(client_id) or parse_support_oi(oi_raw)
 
+    n8n_select_error = ""
     if client_webhook_configured() and support_oi:
         result = select_client_via_n8n(
             oi=support_oi,
@@ -316,20 +317,16 @@ def api_clients_select():
                 )
                 payload["via"] = "n8n"
                 return jsonify(payload)
-            if not support_direct_access_enabled():
-                return jsonify({
-                    "success": False,
-                    "error": format_error_value(
-                        payload.get("error"),
-                        fallback="Conta não encontrada via n8n.",
-                    )
-                    + " Corrija a credencial Support App no workflow n8n U4oqQCvEYnDAYgAm.",
-                    "via": "n8n",
-                }), 502
-        elif not support_direct_access_enabled():
+            n8n_select_error = format_error_value(
+                payload.get("error"),
+                fallback="Conta não encontrada via n8n.",
+            )
+        else:
+            n8n_select_error = str(result.get("error") or "Falha ao carregar conta via n8n.")
+        if not support_direct_access_enabled():
             return jsonify({
                 "success": False,
-                "error": (result.get("error") or "Falha ao carregar conta via n8n.")
+                "error": n8n_select_error
                 + " Corrija a credencial Support App no workflow n8n U4oqQCvEYnDAYgAm.",
                 "via": "n8n",
             }), 502
