@@ -50,6 +50,25 @@ def is_support_configured() -> bool:
     return bool(ANYMARKET_SUPPORT_BASE_URL and get_support_token())
 
 
+def support_direct_access_enabled() -> bool:
+    """
+    VPS/produção: URL *.internal só funciona com VPN.
+    Use ANYMARKET_SUPPORT_DIRECT=1 no .env local quando a VPN alcança a support-app.
+    """
+    import os
+
+    if not is_support_configured():
+        return False
+    base = (ANYMARKET_SUPPORT_BASE_URL or "").lower()
+    if any(token in base for token in (".internal", "localhost", "127.0.0.1")):
+        return os.environ.get("ANYMARKET_SUPPORT_DIRECT", "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+    return True
+
+
 def _get(path: str) -> dict:
     if not is_support_configured():
         return {"ok": False, "error": "Support App AnyMarket sem URL ou token."}

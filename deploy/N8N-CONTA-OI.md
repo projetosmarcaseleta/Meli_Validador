@@ -43,6 +43,10 @@ ANYMARKET_CLIENT_WEBHOOK_URL=https://api.marcaseleta.shop/webhook/consultar-cont
 
 Reinicie `meli-validador`. O front busca por **OI ou nome**; a VPS chama o n8n (rede DB1), não a support-app diretamente.
 
+### 401 no n8n / busca falha na VPS
+
+Se o HTTP Request do workflow retornar **401 Unauthorized**, renove o JWT em **Support App Bearer** (mesmo valor de `ANYMARKET_SUPPORT_TOKEN` válido). Na VPS **não** use fallback VPN — configure o n8n. Busca por **nome** só funciona via n8n; por **OI** (5+ dígitos) o front chama `/api/clients/select` direto.
+
 ## Resposta vazia (HTTP 200)
 
 Se o webhook responder **200 sem JSON**, o workflow não chegou no nó **Responder Webhook** (HTTP support-app falhou, credencial Bearer ausente ou workflow desatualizado). Reimporte `deploy/n8n-workflow-consultar-conta-oi.json`, vincule a credencial **Support App Bearer** e **ative** o workflow.

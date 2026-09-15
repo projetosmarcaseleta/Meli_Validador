@@ -2008,16 +2008,24 @@
     }
     try {
       const res = await fetch(`{{ url_for("api_clients_search") }}?q=${encodeURIComponent(term)}`);
-      const data = await res.json();
+      const raw = await res.text();
+      let data = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        $('client-chip').className = 'token-status err';
+        $('client-chip').textContent = raw?.slice(0, 200) || `Erro HTTP ${res.status} na busca (n8n/VPS).`;
+        return;
+      }
       if (!res.ok || !data.success) {
         $('client-chip').className = 'token-status err';
         $('client-chip').textContent = formatApiError(data.error, 'Falha ao buscar clientes.');
         return;
       }
       renderClientResults(data.clients || []);
-    } catch {
+    } catch (err) {
       $('client-chip').className = 'token-status err';
-      $('client-chip').textContent = 'Falha na busca. Configure ANYMARKET_CLIENT_WEBHOOK_URL (n8n na rede DB1) ou VPN local.';
+      $('client-chip').textContent = formatApiError(err?.message, 'Falha na busca de clientes.');
     }
   }
 

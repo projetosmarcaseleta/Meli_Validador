@@ -40,7 +40,7 @@ def post_n8n_webhook(url: str, payload: dict, *, timeout: int | None = None) -> 
         return None
     try:
         resp = requests.post(hook, json=payload, timeout=timeout or HTTP_TIMEOUT)
-    except requests.RequestException as exc:
+    except Exception as exc:
         return {"success": False, "error": f"Falha ao chamar n8n: {exc}"}
     if resp.status_code != 200:
         return {

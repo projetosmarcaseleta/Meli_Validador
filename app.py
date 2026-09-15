@@ -22,7 +22,13 @@ from n8n_client import (
     search_clients_via_n8n,
     select_client_via_n8n,
 )
-from support_app import is_support_configured, parse_support_oi, search_organizations, support_client_id
+from support_app import (
+    is_support_configured,
+    parse_support_oi,
+    search_organizations,
+    support_client_id,
+    support_direct_access_enabled,
+)
 from config import ANYMARKET_PLATFORM, GUMGA_TOKEN, AI_PREVALIDATION_ENABLED, MELI_TOKEN_WEBHOOK_URL, HTTP_TIMEOUT, get_gumga_token
 from n8n_token import fetch_meli_token_from_n8n
 from exporter import (
@@ -203,6 +209,7 @@ def api_clients():
         "clients": public_clients(),
         "default_id": default_client.id,
         "support_configured": is_support_configured() or client_webhook_configured(),
+        "support_direct_access": support_direct_access_enabled(),
         "client_webhook_configured": client_webhook_configured(),
     })
 
@@ -244,25 +251,41 @@ def api_clients_search():
     if len(query) < 2:
         return jsonify({"success": False, "error": "Informe OI (mín. 5 dígitos) ou nome (mín. 2 letras)."}), 400
 
-    if client_webhook_configured():
-        result = search_clients_via_n8n(query)
-        if result.get("ok"):
-            return jsonify({"success": True, "clients": result.get("data") or [], "via": "n8n"})
-        if is_support_configured():
-            pass
-        else:
-            return jsonify({"success": False, "error": result.get("error") or "Falha na busca via n8n."}), 502
+    n8n_error = ""
+    try:
+        if client_webhook_configured():
+            result = search_clients_via_n8n(query)
+            if result.get("ok"):
+                return jsonify({"success": True, "clients": result.get("data") or [], "via": "n8n"})
+            n8n_error = str(result.get("error") or "Falha na busca via n8n.")
+            if not support_direct_access_enabled():
+                return jsonify({
+                    "success": False,
+                    "error": (
+                        f"{n8n_error} "
+                        "Ajuste a credencial Bearer no workflow n8n U4oqQCvEYnDAYgAm "
+                        "(Support App) ou busque pelo OI numérico."
+                    ),
+                    "via": "n8n",
+                }), 502
 
-    if is_support_configured():
-        result = search_organizations(query)
-        if not result.get("ok"):
-            return jsonify({"success": False, "error": result.get("error") or "Falha na busca."}), 502
-        return jsonify({"success": True, "clients": result.get("data") or [], "via": "support-app"})
+        if support_direct_access_enabled():
+            result = search_organizations(query)
+            if not result.get("ok"):
+                return jsonify({"success": False, "error": result.get("error") or "Falha na busca."}), 502
+            return jsonify({"success": True, "clients": result.get("data") or [], "via": "support-app"})
 
-    return jsonify({
-        "success": False,
-        "error": "Configure ANYMARKET_CLIENT_WEBHOOK_URL (n8n na rede DB1) ou ANYMARKET_SUPPORT_* (VPN).",
-    }), 502
+        return jsonify({
+            "success": False,
+            "error": n8n_error or (
+                "Configure ANYMARKET_CLIENT_WEBHOOK_URL (n8n na rede DB1) ou ANYMARKET_SUPPORT_* (VPN)."
+            ),
+        }), 502
+    except Exception as exc:
+        return jsonify({
+            "success": False,
+            "error": f"Erro interno na busca de clientes: {exc}",
+        }), 500
 
 
 @app.route("/api/clients/select", methods=["POST"])
@@ -293,21 +316,25 @@ def api_clients_select():
                 )
                 payload["via"] = "n8n"
                 return jsonify(payload)
-            if not is_support_configured():
+            if not support_direct_access_enabled():
                 return jsonify({
                     "success": False,
                     "error": format_error_value(
                         payload.get("error"),
-                        fallback="Conta não encontrada.",
-                    ),
-                }), 404
-        elif not is_support_configured():
+                        fallback="Conta não encontrada via n8n.",
+                    )
+                    + " Corrija a credencial Support App no workflow n8n U4oqQCvEYnDAYgAm.",
+                    "via": "n8n",
+                }), 502
+        elif not support_direct_access_enabled():
             return jsonify({
                 "success": False,
-                "error": result.get("error") or "Falha ao carregar conta via n8n.",
+                "error": (result.get("error") or "Falha ao carregar conta via n8n.")
+                + " Corrija a credencial Support App no workflow n8n U4oqQCvEYnDAYgAm.",
+                "via": "n8n",
             }), 502
 
-    if support_oi:
+    if support_oi and support_direct_access_enabled():
         client = get_support_client(client_id, name=client_name)
         if not client:
             hint = (
@@ -319,6 +346,14 @@ def api_clients_select():
                 "success": False,
                 "error": f"Não foi possível carregar marketplaces do OI {support_oi.rstrip('.')}. {hint}",
             }), 502
+    elif support_oi:
+        return jsonify({
+            "success": False,
+            "error": (
+                f"Conta OI {support_oi.rstrip('.')} exige n8n (rede DB1) ou VPN local "
+                "(ANYMARKET_SUPPORT_DIRECT=1)."
+            ),
+        }), 502
     else:
         client = get_client(client_id) or get_default_client()
 
