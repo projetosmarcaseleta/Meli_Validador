@@ -33,7 +33,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=SELECT DISTINCT\n    sm.sku_in_marketplace AS sku,\n    sm.id_in_marketplace AS mlb,\n    sm.is_catalog,\n    sm.status_in_marketplace,\n    sm.id AS marketplace_id,\n    s.product_id,\n    s.id AS sku_id\nFROM anymarket_prd.sku_marketplace AS sm\nLEFT JOIN anymarket_prd.sku AS s ON s.id = sm.sku_id\nWHERE sm.market_place = 'MERCADO_LIVRE'\n  AND sm.id_in_marketplace IS NOT NULL\n  AND sm.sku_in_marketplace IN ({{ $json.skusInClause }})\nORDER BY sm.sku_in_marketplace, sm.is_catalog DESC;"
+        "query": "=SELECT\n    sm.sku_in_marketplace AS sku,\n    sm.id_in_marketplace AS mlb,\n    sm.is_catalog,\n    sm.status_in_marketplace,\n    sm.id AS marketplace_id,\n    s.product_id,\n    s.id AS sku_id\nFROM anymarket_prd.sku_marketplace AS sm\nLEFT JOIN anymarket_prd.sku AS s ON s.id = sm.sku_id\nWHERE sm.market_place = 'MERCADO_LIVRE'\n  AND sm.id_in_marketplace IS NOT NULL\n  AND sm.sku_in_marketplace IN ({{ $json.skusInClause }})\nORDER BY sm.sku_in_marketplace, sm.is_catalog DESC;"
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,

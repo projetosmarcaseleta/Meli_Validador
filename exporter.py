@@ -1133,7 +1133,7 @@ def _resolve_skus_from_anymarket_db(
                     batch = skus[i : i + 200]
                     placeholders = psql.SQL(", ").join(psql.Placeholder() for _ in batch)
                     query = psql.SQL("""
-                        SELECT DISTINCT
+                        SELECT
                             sm.sku_in_marketplace AS sku,
                             sm.id_in_marketplace AS mlb,
                             sm.is_catalog,
@@ -1222,7 +1222,7 @@ def _resolve_mlbs_from_anymarket_db(
                     batch = [m.upper() for m in mlbs[i : i + 200]]
                     placeholders = psql.SQL(", ").join(psql.Placeholder() for _ in batch)
                     query = psql.SQL("""
-                        SELECT DISTINCT
+                        SELECT
                             sm.sku_in_marketplace AS sku,
                             sm.id_in_marketplace AS mlb,
                             sm.is_catalog,
@@ -1506,6 +1506,14 @@ def process_skus_for_catalog_audit(
         all_mlbs.extend([m for m, _ in d["cat"]])
         all_mlbs.extend([m for m, _ in d["trad"]])
     all_mlbs = list(dict.fromkeys(all_mlbs))
+    for sku_key, slots in db_map.items():
+        n_cat = len(slots.get("cat") or [])
+        n_trad = len(slots.get("trad") or [])
+        if n_cat or n_trad:
+            print(
+                f"[MLB MAP] SKU {sku_key}: {n_cat} catálogo(s), {n_trad} tradicional(is)",
+                flush=True,
+            )
 
     # 4. Baixar todos os produtos em lotes de BATCH_SIZE (20)
     produtos: dict = {}
@@ -1642,27 +1650,21 @@ def process_skus_for_catalog_audit(
                     return m
             return candidates[0][0]
 
-        trad_mlb = _pick_best(trads)
-        trad_prod = ml_fields_by_mlb.get(trad_mlb) if trad_mlb else None
+        linked_cat_mlbs = [m for m, _ in cats]
+        linked_trad_mlbs = [m for m, _ in trads]
 
-        # Se o input foi um MLB específico, parear com esse MLB
-        if _is_mlb(input_label):
-            if any(m == input_label for m, _ in cats):
-                cat_mlb = input_label
-                cat_prod = ml_fields_by_mlb.get(cat_mlb)
-            elif any(m == input_label for m, _ in trads):
-                trad_mlb = input_label
-                trad_prod = ml_fields_by_mlb.get(trad_mlb)
-                cat_mlb = _pick_best(cats)
-                cat_prod = ml_fields_by_mlb.get(cat_mlb) if cat_mlb else None
-            else:
-                cat_mlb = input_label
-                cat_prod = ml_fields_by_mlb.get(cat_mlb)
-
-            audit_item = build_catalog_audit_item(lookup_sku, cat_prod, trad_prod, _any_for(lookup_sku))
-            audit_item["input_mlb"] = input_label
-            if input_label != lookup_sku:
-                audit_item["summary"] = f"Entrada MLB {input_label} → SKU {lookup_sku}. {audit_item.get('summary', '')}"
+        def _push_audit_item(cat_prod, trad_prod) -> None:
+            nonlocal count_div, count_ok, count_att, count_err
+            audit_item = build_catalog_audit_item(
+                lookup_sku,
+                cat_prod,
+                trad_prod,
+                _any_for(lookup_sku),
+            )
+            audit_item["mlbs_linked"] = {
+                "cat": linked_cat_mlbs,
+                "trad": linked_trad_mlbs,
+            }
             st = audit_item.get("status_geral")
             if st == "OK":
                 count_ok += 1
@@ -1673,26 +1675,25 @@ def process_skus_for_catalog_audit(
             else:
                 count_err += 1
             items.append(audit_item)
-        else:
-            # Input é SKU: se tiver múltiplos catálogos vinculados, gera um item para cada catálogo contra o tradicional
-            if cats:
-                for cat_entry in cats:
-                    cat_mlb = cat_entry[0]
-                    cat_prod = ml_fields_by_mlb.get(cat_mlb)
-                    audit_item = build_catalog_audit_item(lookup_sku, cat_prod, trad_prod, _any_for(lookup_sku))
-                    st = audit_item.get("status_geral")
-                    if st == "OK":
-                        count_ok += 1
-                    elif st == "DIVERGENTE":
-                        count_div += 1
-                    elif st == "ATENCAO":
-                        count_att += 1
-                    else:
-                        count_err += 1
-                    items.append(audit_item)
-            else:
-                # Sem catálogo, apenas tradicional
-                audit_item = build_catalog_audit_item(lookup_sku, None, trad_prod, _any_for(lookup_sku))
+
+        # Se o input foi um MLB específico, parear com esse MLB
+        if _is_mlb(input_label):
+            in_cat = any(m == input_label for m, _ in cats)
+            in_trad = any(m == input_label for m, _ in trads)
+
+            def _push_mlb_input_item(cat_prod, trad_prod) -> None:
+                audit_item = build_catalog_audit_item(
+                    lookup_sku,
+                    cat_prod,
+                    trad_prod,
+                    _any_for(lookup_sku),
+                )
+                audit_item["input_mlb"] = input_label
+                audit_item["mlbs_linked"] = {"cat": linked_cat_mlbs, "trad": linked_trad_mlbs}
+                if input_label != lookup_sku:
+                    audit_item["summary"] = (
+                        f"Entrada MLB {input_label} → SKU {lookup_sku}. {audit_item.get('summary', '')}"
+                    )
                 st = audit_item.get("status_geral")
                 if st == "OK":
                     count_ok += 1
@@ -1703,6 +1704,37 @@ def process_skus_for_catalog_audit(
                 else:
                     count_err += 1
                 items.append(audit_item)
+
+            if in_cat and trads:
+                cat_prod = ml_fields_by_mlb.get(input_label)
+                for trad_mlb, _ in trads:
+                    _push_mlb_input_item(cat_prod, ml_fields_by_mlb.get(trad_mlb))
+            elif in_trad and cats:
+                trad_prod = ml_fields_by_mlb.get(input_label)
+                for cat_mlb, _ in cats:
+                    _push_mlb_input_item(ml_fields_by_mlb.get(cat_mlb), trad_prod)
+            elif in_cat:
+                _push_mlb_input_item(ml_fields_by_mlb.get(input_label), None)
+            elif in_trad:
+                _push_mlb_input_item(None, ml_fields_by_mlb.get(input_label))
+            else:
+                _push_mlb_input_item(ml_fields_by_mlb.get(input_label), None)
+        else:
+            # Input é SKU: todos catálogos × todos tradicionais (cada anúncio vinculado)
+            if cats and trads:
+                for cat_mlb, _ in cats:
+                    cat_prod = ml_fields_by_mlb.get(cat_mlb)
+                    for trad_mlb, _ in trads:
+                        trad_prod = ml_fields_by_mlb.get(trad_mlb)
+                        _push_audit_item(cat_prod, trad_prod)
+            elif cats:
+                for cat_mlb, _ in cats:
+                    cat_prod = ml_fields_by_mlb.get(cat_mlb)
+                    _push_audit_item(cat_prod, None)
+            elif trads:
+                for trad_mlb, _ in trads:
+                    trad_prod = ml_fields_by_mlb.get(trad_mlb)
+                    _push_audit_item(None, trad_prod)
 
     return {
         "items": items,

@@ -455,7 +455,14 @@ def build_catalog_audit_item(
     main_mlb = trad.get("mlb") or cat.get("mlb") or ""
     cat_mlb = cat.get("mlb", "")
     trad_mlb = trad.get("mlb", "")
-    item_id = f"{sku}_{cat_mlb}" if cat_mlb else (f"{sku}_{trad_mlb}" if trad_mlb else f"{sku}_na")
+    if cat_mlb and trad_mlb:
+        item_id = f"{sku}_{cat_mlb}_{trad_mlb}"
+    elif cat_mlb:
+        item_id = f"{sku}_{cat_mlb}"
+    elif trad_mlb:
+        item_id = f"{sku}_{trad_mlb}"
+    else:
+        item_id = f"{sku}_na"
 
     return {
         "item_id": item_id,

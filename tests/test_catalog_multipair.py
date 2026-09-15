@@ -14,7 +14,7 @@ def test_build_catalog_audit_item_unique_id():
     trad = {"mlb": "MLB7520745830", "title": "Guarda-roupa", "status": "active"}
     
     item = compare.build_catalog_audit_item("241686700", cat, trad)
-    assert item["item_id"] == "241686700_MLB7523586708"
+    assert item["item_id"] == "241686700_MLB7523586708_MLB7520745830"
     assert item["mlb_cat"] == "MLB7523586708"
     assert item["mlb_trad"] == "MLB7520745830"
     assert item["sku"] == "241686700"
@@ -132,12 +132,50 @@ def test_process_skus_for_catalog_audit_multiple_catalogs(mock_get_batch, mock_d
     assert item1["sku"] == "241686700"
     assert item1["mlb_cat"] == "MLB7523586708"
     assert item1["mlb_trad"] == "MLB7520745830"
-    assert item1["item_id"] == "241686700_MLB7523586708"
+    assert item1["item_id"] == "241686700_MLB7523586708_MLB7520745830"
 
     assert item2["sku"] == "241686700"
     assert item2["mlb_cat"] == "MLB7523623932"
     assert item2["mlb_trad"] == "MLB7520745830"
-    assert item2["item_id"] == "241686700_MLB7523623932"
+    assert item2["item_id"] == "241686700_MLB7523623932_MLB7520745830"
+
+
+@patch("exporter.get_item_description", return_value="")
+@patch("exporter.validate_token")
+@patch("exporter._resolve_skus_from_anymarket_db")
+@patch("exporter.get_products_batch")
+def test_process_skus_for_catalog_audit_multiple_traditionals(mock_get_batch, mock_db, mock_token, mock_desc):
+    mock_token.return_value = {"id": 12345, "nickname": "SELETA"}
+    mock_db.return_value = {
+        "999001": {
+            "cat": [("MLB_CAT1", "active")],
+            "trad": [("MLB_TRAD1", "active"), ("MLB_TRAD2", "active")],
+        }
+    }
+
+    def fake_prod(mlb, is_cat):
+        return {
+            "id": mlb,
+            "title": f"Produto {mlb}",
+            "catalog_listing": is_cat,
+            "status": "active",
+            "pictures": [],
+            "attributes": [],
+        }
+
+    mock_get_batch.return_value = {
+        "MLB_CAT1": fake_prod("MLB_CAT1", True),
+        "MLB_TRAD1": fake_prod("MLB_TRAD1", False),
+        "MLB_TRAD2": fake_prod("MLB_TRAD2", False),
+    }
+
+    res = exporter.process_skus_for_catalog_audit(["999001"], "FAKE_TOKEN", gumga_token="")
+    items = res.get("items", [])
+    assert len(items) == 2
+    trads = sorted(i["mlb_trad"] for i in items)
+    assert trads == ["MLB_TRAD1", "MLB_TRAD2"]
+    assert all(i["mlb_cat"] == "MLB_CAT1" for i in items)
+    assert items[0]["item_id"] == "999001_MLB_CAT1_MLB_TRAD1"
 
 
 @patch("exporter.find_product_by_partner_id")
