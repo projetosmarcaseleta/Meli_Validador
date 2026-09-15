@@ -1005,8 +1005,9 @@ def _post_sku_webhook(
         "error": "",
     }
     sent_skus = payload.get("skus") or payload.get("mlbs") or []
+    oi_hint = str(payload.get("oi") or "").strip()
     print(
-        f"[N8N WEBHOOK] POST {hook} client={client_id or '-'} skus={sent_skus}",
+        f"[N8N WEBHOOK] POST {hook} client={client_id or '-'} oi={oi_hint or '-'} skus={sent_skus}",
         flush=True,
     )
     resp = req.post(hook, json=payload, timeout=30)

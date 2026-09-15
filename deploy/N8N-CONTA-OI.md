@@ -43,7 +43,23 @@ ANYMARKET_CLIENT_WEBHOOK_URL=https://api.marcaseleta.shop/webhook/consultar-cont
 
 Reinicie `meli-validador`. O front busca por **OI ou nome**; a VPS chama o n8n (rede DB1), não a support-app diretamente.
 
+## Resposta vazia (HTTP 200)
+
+Se o webhook responder **200 sem JSON**, o workflow não chegou no nó **Responder Webhook** (HTTP support-app falhou, credencial Bearer ausente ou workflow desatualizado). Reimporte `deploy/n8n-workflow-consultar-conta-oi.json`, vincule a credencial **Support App Bearer** e **ative** o workflow.
+
 ## SKU + OI
 
 Workflow réplica Postgres: **zAxE6ZpLgyLyFqu7** → webhook `consultar-skus-anymarket`  
-No POST de SKUs, envie `oi` — o nó **Preparar SKUs** repassa `oi` para o Postgres e demais nós.
+Arquivo: `deploy/n8n-workflow-anymarket-skus.json`
+
+POST (exemplo):
+
+```json
+{
+  "skus": ["SKU1", "SKU2"],
+  "oi": "259063586.",
+  "client_id": "support:259063586"
+}
+```
+
+O nó **Preparar SKUs1** normaliza o OI (ou extrai de `support:123456789`) e o Postgres filtra `s.oi = '<digits>.'`. Sem OI, o workflow responde erro JSON (não consulta todas as contas).

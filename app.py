@@ -16,7 +16,12 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from anymarket_api import validate_gumga_token
 from api import validate_token
 from clients import get_client, get_default_client, get_support_client, public_clients
-from n8n_client import client_webhook_configured, search_clients_via_n8n, select_client_via_n8n
+from n8n_client import (
+    client_webhook_configured,
+    format_error_value,
+    search_clients_via_n8n,
+    select_client_via_n8n,
+)
 from support_app import is_support_configured, parse_support_oi, search_organizations, support_client_id
 from config import ANYMARKET_PLATFORM, GUMGA_TOKEN, AI_PREVALIDATION_ENABLED, MELI_TOKEN_WEBHOOK_URL, HTTP_TIMEOUT, get_gumga_token
 from n8n_token import fetch_meli_token_from_n8n
@@ -278,31 +283,41 @@ def api_clients_select():
             client_id=client_id,
             client_name=client_name,
         )
-        if not result.get("ok"):
+        if result.get("ok"):
+            payload = dict(result.get("data") or {})
+            if payload.get("success"):
+                payload = _attach_meli_validation(
+                    payload,
+                    str(payload.get("meli_token") or ""),
+                    support_context=True,
+                )
+                payload["via"] = "n8n"
+                return jsonify(payload)
+            if not is_support_configured():
+                return jsonify({
+                    "success": False,
+                    "error": format_error_value(
+                        payload.get("error"),
+                        fallback="Conta não encontrada.",
+                    ),
+                }), 404
+        elif not is_support_configured():
             return jsonify({
                 "success": False,
                 "error": result.get("error") or "Falha ao carregar conta via n8n.",
             }), 502
-        payload = dict(result.get("data") or {})
-        if not payload.get("success"):
-            return jsonify({
-                "success": False,
-                "error": str(payload.get("error") or "Conta não encontrada."),
-            }), 404
-        payload = _attach_meli_validation(
-            payload,
-            str(payload.get("meli_token") or ""),
-            support_context=True,
-        )
-        payload["via"] = "n8n"
-        return jsonify(payload)
 
     if support_oi:
         client = get_support_client(client_id, name=client_name)
         if not client:
+            hint = (
+                "Configure ANYMARKET_CLIENT_WEBHOOK_URL (n8n U4oqQCvEYnDAYgAm) na VPS."
+                if not client_webhook_configured()
+                else "Falha ao carregar conta via n8n ou support-app."
+            )
             return jsonify({
                 "success": False,
-                "error": "Não foi possível carregar o cliente na support-app (VPN/token).",
+                "error": f"Não foi possível carregar marketplaces do OI {support_oi.rstrip('.')}. {hint}",
             }), 502
     else:
         client = get_client(client_id) or get_default_client()

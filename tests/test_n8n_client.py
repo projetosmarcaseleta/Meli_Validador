@@ -1,6 +1,11 @@
 from unittest.mock import patch
 
-from n8n_client import client_webhook_configured, search_clients_via_n8n
+from n8n_client import client_webhook_configured, format_error_value, search_clients_via_n8n
+
+
+def test_format_error_value_object():
+    assert format_error_value({"message": "401 Unauthorized"}) == "401 Unauthorized"
+    assert format_error_value("[object Object]", fallback="fallback") == "fallback"
 
 
 @patch("n8n_client.ANYMARKET_CLIENT_WEBHOOK_URL", "")

@@ -37,6 +37,7 @@ GUMGA_TOKEN = os.environ.get("GUMGA_TOKEN", os.environ.get("ANYMARKET_GUMGA_TOKE
 # n8n réplica Postgres (SKUs → MLB): workflow zAxE6ZpLgyLyFqu7
 SELETA_SKU_WEBHOOK_URL = "https://api.marcaseleta.shop/webhook/consultar-skus-anymarket"
 # n8n support-app (conta/OI + token ML): workflow U4oqQCvEYnDAYgAm → path consultar-conta-anymarket
+SELETA_CLIENT_WEBHOOK_URL = "https://api.marcaseleta.shop/webhook/consultar-conta-anymarket"
 
 
 def get_gumga_token() -> str:
@@ -57,7 +58,7 @@ ANYMARKET_SKU_WEBHOOK_URL = os.environ.get(
 # Webhook n8n na rede DB1: support-app + token ML por OI (VPS sem VPN)
 ANYMARKET_CLIENT_WEBHOOK_URL = os.environ.get(
     "ANYMARKET_CLIENT_WEBHOOK_URL",
-    os.environ.get("N8N_CLIENT_WEBHOOK_URL", ""),
+    os.environ.get("N8N_CLIENT_WEBHOOK_URL", SELETA_CLIENT_WEBHOOK_URL),
 ).strip().strip("'\"")
 
 # Database Read-Replica (Fallback para ambiente local/VPN direta)

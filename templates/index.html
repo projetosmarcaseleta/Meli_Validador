@@ -1914,16 +1914,41 @@
     return '';
   }
 
+  function getSelectedClientOi() {
+    const client = findClient(getSelectedClientId());
+    if (client && client.oi) return String(client.oi).trim();
+    const search = ($('input-client-search')?.value || '').trim();
+    if (isLikelyOi(search)) {
+      const digits = search.replace(/\D/g, '');
+      return digits ? `${digits}.` : '';
+    }
+    return '';
+  }
+
   function clientPayload() {
-    return {
+    const payload = {
       client_id: getSelectedClientId(),
-      client_name: getSelectedClientName()
+      client_name: getSelectedClientName(),
     };
+    const oi = getSelectedClientOi();
+    if (oi) payload.oi = oi;
+    return payload;
   }
 
   function findClient(clientId) {
     if (selectedSupportClient && selectedSupportClient.id === clientId) return selectedSupportClient;
     return (SERVER_CLIENTS || []).find(c => c.id === clientId) || SERVER_CLIENTS[0] || null;
+  }
+
+  function formatApiError(err, fallback) {
+    if (err == null || err === '') return fallback || '';
+    if (typeof err === 'string') return err === '[object Object]' ? (fallback || err) : err;
+    if (typeof err === 'object') {
+      const msg = err.message || err.errorMessage || err.description || err.detail;
+      if (msg) return String(msg);
+      try { return JSON.stringify(err); } catch { return fallback || 'Erro desconhecido.'; }
+    }
+    return String(err);
   }
 
   function updateClientChip() {
@@ -1986,7 +2011,7 @@
       const data = await res.json();
       if (!res.ok || !data.success) {
         $('client-chip').className = 'token-status err';
-        $('client-chip').textContent = data.error || 'Falha ao buscar clientes.';
+        $('client-chip').textContent = formatApiError(data.error, 'Falha ao buscar clientes.');
         return;
       }
       renderClientResults(data.clients || []);
@@ -2027,15 +2052,28 @@
     chip.style.display = 'flex';
     chip.textContent = `Carregando ${clientName}...`;
     try {
+      const oiHint = ($('input-client-search')?.value || '').trim();
       const res = await fetch('{{ url_for("api_clients_select") }}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_id: clientId, client_name: clientName })
+        body: JSON.stringify({
+          client_id: clientId,
+          client_name: clientName,
+          oi: isLikelyOi(oiHint) ? oiHint : undefined
+        })
       });
-      const data = await res.json();
+      const raw = await res.text();
+      let data = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        chip.className = 'token-status err';
+        chip.textContent = raw?.slice(0, 180) || `Erro HTTP ${res.status} ao carregar conta (n8n/support-app).`;
+        return;
+      }
       if (!res.ok || !data.success || !data.client) {
         chip.className = 'token-status err';
-        chip.textContent = data.error || 'Falha ao selecionar o cliente.';
+        chip.textContent = formatApiError(data.error, 'Falha ao selecionar o cliente.');
         return;
       }
       selectedSupportClient = data.client;

@@ -4,7 +4,30 @@ from __future__ import annotations
 
 import requests
 
+import json
+
 from config import ANYMARKET_CLIENT_WEBHOOK_URL, HTTP_TIMEOUT
+
+
+def format_error_value(value: object, *, fallback: str = "") -> str:
+    if value is None:
+        return fallback
+    if isinstance(value, str):
+        text = value.strip()
+        if not text or text == "[object Object]":
+            return fallback
+        return text
+    if isinstance(value, dict):
+        for key in ("message", "errorMessage", "description", "detail", "error"):
+            part = format_error_value(value.get(key), fallback="")
+            if part:
+                return part
+        try:
+            return json.dumps(value, ensure_ascii=False)[:240]
+        except TypeError:
+            return fallback or str(value)
+    text = str(value).strip()
+    return text if text and text != "[object Object]" else (fallback or text)
 
 
 def client_webhook_configured() -> bool:
@@ -46,7 +69,10 @@ def search_clients_via_n8n(query: str) -> dict:
     if not data:
         return {"ok": False, "error": "Sem resposta do webhook de conta."}
     if not data.get("success"):
-        return {"ok": False, "error": str(data.get("error") or "Falha na busca via n8n.")}
+        return {
+            "ok": False,
+            "error": format_error_value(data.get("error"), fallback="Falha na busca via n8n."),
+        }
     clients = data.get("clients") or []
     if not isinstance(clients, list):
         return {"ok": False, "error": "Formato inesperado do n8n (clients)."}
@@ -73,5 +99,8 @@ def select_client_via_n8n(
     if not data:
         return {"ok": False, "error": "Sem resposta do webhook de conta."}
     if not data.get("success"):
-        return {"ok": False, "error": str(data.get("error") or "Falha ao carregar conta via n8n.")}
+        return {
+            "ok": False,
+            "error": format_error_value(data.get("error"), fallback="Falha ao carregar conta via n8n."),
+        }
     return {"ok": True, "data": data}

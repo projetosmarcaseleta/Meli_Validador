@@ -66,9 +66,10 @@ def test_resolve_support_client_reads_marketplaces(mock_get, _mock_token, _mock_
     assert path.endswith("/advancedSearch/marketplaces/259063586.")
 
 
+@patch("app.client_webhook_configured", return_value=False)
 @patch("app.validate_token", return_value={"id": 99, "nickname": "KABUM"})
 @patch("support_app.resolve_support_client")
-def test_api_clients_select_does_not_expose_gumga(mock_resolve, _mock_validate):
+def test_api_clients_select_does_not_expose_gumga(mock_resolve, _mock_validate, _mock_n8n):
     mock_resolve.return_value = {
         "ok": True,
         "data": {
