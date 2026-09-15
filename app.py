@@ -216,15 +216,55 @@ def api_clients_select():
     data = request.get_json(silent=True) or {}
     client_id = str(data.get("client_id") or data.get("oi") or "").strip()
     client_name = str(data.get("client_name") or data.get("name") or "").strip()
-    client = get_support_client(client_id, name=client_name)
-    if not client:
-        return jsonify({"success": False, "error": "Não foi possível carregar o cliente na support-app."}), 404
+    if parse_support_oi(client_id):
+        client = get_support_client(client_id, name=client_name)
+        if not client:
+            return jsonify({
+                "success": False,
+                "error": "Não foi possível carregar o cliente na support-app (VPN/token).",
+            }), 502
+    else:
+        client = get_client(client_id) or get_default_client()
+
+    meli_token = (client.meli_access_token or "").strip()
+    if not meli_token:
+        webhook = (client.meli_token_webhook_url or MELI_TOKEN_WEBHOOK_URL or "").strip()
+        if webhook:
+            n8n = fetch_meli_token_from_n8n(webhook, timeout=HTTP_TIMEOUT)
+            if n8n.get("ok"):
+                meli_token = (n8n.get("token") or "").strip()
+
+    meli_valid = False
+    meli_nickname = ""
+    meli_user_id = ""
+    meli_error = ""
+    if meli_token:
+        user = validate_token(meli_token)
+        if user and user.get("id"):
+            meli_valid = True
+            meli_nickname = str(user.get("nickname") or "").strip()
+            meli_user_id = str(user.get("id") or "").strip()
+        else:
+            meli_error = "Token do Mercado Livre inválido ou expirado."
+    elif parse_support_oi(client_id):
+        meli_error = "Nenhuma integração Mercado Livre ativa com token nesta conta."
+    else:
+        meli_error = "Token ML não configurado. Use Atualizar Token ou selecione a conta na support-app."
+
     public = client.public_dict()
-    return jsonify({
+    public["has_ml"] = meli_valid or bool(meli_token)
+
+    payload = {
         "success": True,
         "client": public,
-        "meli_token": client.meli_access_token,
-    })
+        "meli_token": meli_token,
+        "meli_valid": meli_valid,
+        "meli_nickname": meli_nickname,
+        "meli_user_id": meli_user_id,
+    }
+    if meli_error and not meli_valid:
+        payload["warning"] = meli_error
+    return jsonify(payload)
 
 
 @app.route("/api/validate_token", methods=["POST"])

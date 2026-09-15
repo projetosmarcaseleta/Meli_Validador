@@ -116,10 +116,39 @@ def fetch_marketplaces(hierarchy_code: str) -> dict:
 
 
 def _is_active_marketplace(row: dict) -> bool:
-    return str(row.get("active") or "").strip().upper() in {"ATIVADO", "ACTIVE", "ATIVO", "1", "TRUE"}
+    raw = row.get("active")
+    if raw is True:
+        return True
+    if raw is False:
+        return False
+    return str(raw or "").strip().upper() in {"ATIVADO", "ACTIVE", "ATIVO", "1", "TRUE", "SIM", "YES"}
 
 
-def _first_integration(rows: list[dict], name: str) -> dict:
+def _normalize_integration(name: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", (name or "").upper())
+
+
+def _is_meli_integration(row: dict) -> bool:
+    label = str(row.get("integration") or row.get("name") or "").strip().upper()
+    if not label:
+        return False
+    norm = _normalize_integration(label)
+    if norm in {"MERCADOLIVRE", "ML", "MELI"}:
+        return True
+    return "MERCADO" in label and "LIVRE" in label
+
+
+def _token_from_marketplace_row(row: dict) -> str:
+    if not isinstance(row, dict):
+        return ""
+    for key in ("api_key", "apiKey", "access_token", "accessToken", "token", "value"):
+        val = str(row.get(key) or "").strip()
+        if val:
+            return val
+    return ""
+
+
+def _first_integration(rows: list[dict], name: str, *, active_only: bool = False) -> dict:
     wanted = name.strip().upper()
     active = [
         row for row in rows
@@ -127,10 +156,24 @@ def _first_integration(rows: list[dict], name: str) -> dict:
     ]
     if active:
         return active[0]
+    if active_only:
+        return {}
     for row in rows:
         if str(row.get("integration") or "").strip().upper() == wanted:
             return row
     return {}
+
+
+def _active_meli_integration(rows: list[dict]) -> dict:
+    """Integração Mercado Livre ativa (api_key = access token ML)."""
+    meli_rows = [row for row in rows if isinstance(row, dict) and _is_meli_integration(row)]
+    active_rows = [row for row in meli_rows if _is_active_marketplace(row)]
+    return active_rows[0] if active_rows else {}
+
+
+def meli_access_token_from_marketplaces(rows: list[dict]) -> str:
+    row = _active_meli_integration(rows)
+    return _token_from_marketplace_row(row)
 
 
 def _platform_from_name(name: str) -> str:
@@ -149,7 +192,9 @@ def resolve_support_client(client_id: str, name: str = "") -> dict:
 
     rows = markets.get("data") or []
     gumga_row = _first_integration(rows, "GUMGA")
-    ml_row = _first_integration(rows, "MERCADO LIVRE")
+    ml_row = _active_meli_integration(rows)
+    if not ml_row:
+        ml_row = _first_integration(rows, "MERCADO LIVRE", active_only=True)
     display_name = (name or "").strip() or f"Cliente {oi.rstrip('.')}"
     integrations = []
     for row in rows:
@@ -173,7 +218,7 @@ def resolve_support_client(client_id: str, name: str = "") -> dict:
         "sku_webhook_url": ANYMARKET_SKU_WEBHOOK_URL or SELETA_SKU_WEBHOOK_URL,
         "meli_token_webhook_url": MELI_TOKEN_WEBHOOK_URL,
         "oi": oi,
-        "meli_access_token": str(ml_row.get("api_key") or "").strip(),
+        "meli_access_token": meli_access_token_from_marketplaces(rows),
         "marketplaces": integrations,
         "backoffice_api_ok": api_ok,
     }

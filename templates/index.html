@@ -1958,7 +1958,10 @@
     `).join('');
     box.classList.add('open');
     box.querySelectorAll('.client-result').forEach(btn => {
-      btn.addEventListener('click', () => selectSupportClient(btn.dataset.clientId, btn.dataset.clientName));
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        selectSupportClient(btn.dataset.clientId, btn.dataset.clientName);
+      });
     });
   }
 
@@ -1983,6 +1986,30 @@
     }
   }
 
+  function applyMeliTokenFromClient(data) {
+    const tokenChip = $('token-chip');
+    if (!tokenChip) return;
+    tokenChip.style.display = 'flex';
+    const token = (data.meli_token || '').trim();
+    if (token) {
+      $('input-token').value = token;
+    }
+    if (data.meli_valid && token) {
+      tokenChip.className = 'token-status ok';
+      const nick = data.meli_nickname ? ` · ${data.meli_nickname}` : '';
+      const uid = data.meli_user_id ? ` · ID ${data.meli_user_id}` : '';
+      tokenChip.textContent = `✓ Mercado Livre ativo${nick}${uid}`;
+      return;
+    }
+    if (token) {
+      tokenChip.className = 'token-status err';
+      tokenChip.textContent = data.warning || 'Token ML recusado pelo Mercado Livre.';
+      return;
+    }
+    tokenChip.className = 'token-status err';
+    tokenChip.textContent = data.warning || 'Conta sem integração Mercado Livre ativa.';
+  }
+
   async function selectSupportClient(clientId, clientName) {
     closeClientResults();
     const chip = $('client-chip');
@@ -2005,11 +2032,9 @@
       localStorage.setItem(CLIENT_STORAGE_KEY, data.client.id);
       localStorage.setItem(CLIENT_NAME_STORAGE_KEY, data.client.name);
       $('input-client-search').value = data.client.name;
-      if (data.meli_token) {
-        $('input-token').value = data.meli_token;
-        $('token-chip').className = 'token-status ok';
-        $('token-chip').textContent = `Token ML preenchido · ${data.client.name}`;
-      }
+      const select = $('input-client');
+      if (select) select.value = DEFAULT_CLIENT_ID;
+      applyMeliTokenFromClient(data);
       updateClientChip();
     } catch {
       chip.className = 'token-status err';
@@ -2026,8 +2051,8 @@
       select.value = saved;
     }
     if (search && saved && String(saved).startsWith('support:')) {
-      selectedSupportClient = { id: saved, name: savedName, source: 'support' };
       search.value = savedName;
+      selectSupportClient(saved, savedName || saved);
     }
     if (select) {
       select.addEventListener('change', () => {
@@ -2036,6 +2061,7 @@
         localStorage.removeItem(CLIENT_NAME_STORAGE_KEY);
         if (search) search.value = '';
         updateClientChip();
+        selectSupportClient(select.value, getSelectedClientName());
       });
     }
     if (search) {

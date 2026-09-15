@@ -1,6 +1,12 @@
 from unittest.mock import patch
 
-from support_app import parse_support_oi, resolve_support_client, search_organizations, support_client_id
+from support_app import (
+    meli_access_token_from_marketplaces,
+    parse_support_oi,
+    resolve_support_client,
+    search_organizations,
+    support_client_id,
+)
 
 
 def test_support_ids():
@@ -28,6 +34,14 @@ def test_search_organizations_filters_duplicates(mock_get, _mock_token):
     assert path.endswith("/advancedSearch/Kabum")
 
 
+def test_meli_token_only_from_active_integration():
+    rows = [
+        {"integration": "MERCADO_LIVRE", "api_key": "APP_USR-OLD", "active": "INATIVO"},
+        {"integration": "MERCADO LIVRE", "api_key": "APP_USR-NEW", "active": "ATIVADO"},
+    ]
+    assert meli_access_token_from_marketplaces(rows) == "APP_USR-NEW"
+
+
 @patch("anymarket_auth.validate_gumga_token", return_value={"valid": False, "error": "User not registered"})
 @patch("support_app.get_support_token", return_value="TOKEN")
 @patch("support_app.requests.get")
@@ -52,8 +66,9 @@ def test_resolve_support_client_reads_marketplaces(mock_get, _mock_token, _mock_
     assert path.endswith("/advancedSearch/marketplaces/259063586.")
 
 
+@patch("app.validate_token", return_value={"id": 99, "nickname": "KABUM"})
 @patch("support_app.resolve_support_client")
-def test_api_clients_select_does_not_expose_gumga(mock_resolve):
+def test_api_clients_select_does_not_expose_gumga(mock_resolve, _mock_validate):
     mock_resolve.return_value = {
         "ok": True,
         "data": {
