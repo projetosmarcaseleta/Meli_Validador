@@ -174,14 +174,14 @@ def test_process_skus_attaches_anymarket_product(mock_get_batch, mock_db, mock_t
     mock_find.assert_called()
 
 
-@patch("exporter.get_product")
+@patch("exporter.load_product_for_sku_audit")
 @patch("exporter.find_product_by_partner_id", return_value={})
 @patch("exporter.get_item_description", return_value="")
 @patch("exporter.validate_token")
 @patch("exporter._resolve_skus_from_anymarket_db")
 @patch("exporter.get_products_batch")
 def test_process_skus_uses_replica_product_id_when_sku_filter_misses(
-    mock_get_batch, mock_db, mock_token, mock_desc, mock_find, mock_get_product
+    mock_get_batch, mock_db, mock_token, mock_desc, mock_find, mock_load_any
 ):
     mock_token.return_value = {"id": 1, "nickname": "SELETA"}
     mock_db.return_value = {
@@ -200,30 +200,32 @@ def test_process_skus_uses_replica_product_id_when_sku_filter_misses(
             "pictures": [],
         },
     }
-    mock_get_product.return_value = {
-        "id": 7131999157,
-        "title": "iPhone Any pai",
-        "skus": [{"id": 9, "partnerId": "MTMA3BZ/A", "title": "iPhone 15 256 Preto"}],
-        "images": [{"url": "https://example.com/iphone.jpg", "main": True, "index": 1}],
-    }
+    mock_load_any.return_value = (
+        {
+            "id": 7131999157,
+            "title": "iPhone Any pai",
+            "skus": [{"id": 9, "partnerId": "MTMA3BZ/A", "title": "iPhone 15 256 Preto"}],
+            "images": [{"url": "https://example.com/iphone.jpg", "main": True, "index": 1}],
+        },
+        "9",
+    )
 
     res = exporter.process_skus_for_catalog_audit(["238834500"], "FAKE_TOKEN", gumga_token="GUMGA")
     item = res["items"][0]
     assert item["anymarket"]["any_id"] == "7131999157"
     assert item["anymarket"]["title"] == "iPhone 15 256 Preto"
-    mock_get_product.assert_called()
+    mock_load_any.assert_called()
     mock_find.assert_not_called()
 
 
-@patch("exporter.get_product_sku")
-@patch("exporter.get_product")
+@patch("exporter.load_product_for_sku_audit")
 @patch("exporter.find_product_by_partner_id")
 @patch("exporter.get_item_description", return_value="")
 @patch("exporter.validate_token")
 @patch("exporter._resolve_skus_from_anymarket_db")
 @patch("exporter.get_products_batch")
 def test_process_skus_uses_official_product_and_sku_endpoints(
-    mock_get_batch, mock_db, mock_token, mock_desc, mock_find, mock_get_product, mock_get_sku
+    mock_get_batch, mock_db, mock_token, mock_desc, mock_find, mock_load_any
 ):
     mock_token.return_value = {"id": 1, "nickname": "SELETA"}
     mock_db.return_value = {
@@ -243,26 +245,32 @@ def test_process_skus_uses_official_product_and_sku_endpoints(
             "pictures": [],
         },
     }
-    mock_get_product.return_value = {
-        "id": 7131999157,
-        "title": "iPhone Any pai",
-        "skus": [{"id": 1, "partnerId": "OUTRO", "title": "Outra variação"}],
-        "images": [{"url": "https://example.com/iphone.jpg", "main": True, "index": 1}],
-    }
-    mock_get_sku.return_value = {
-        "id": 128109841,
-        "partnerId": "MTPG3BR/A",
-        "title": "iPhone 15 256 Preto",
-        "ean": "0195949036828",
-    }
+    mock_load_any.return_value = (
+        {
+            "id": 7131999157,
+            "title": "iPhone Any pai",
+            "skus": [
+                {
+                    "id": 128109841,
+                    "partnerId": "MTPG3BR/A",
+                    "title": "iPhone 15 256 Preto",
+                    "ean": "0195949036828",
+                }
+            ],
+            "images": [{"url": "https://example.com/iphone.jpg", "main": True, "index": 1}],
+        },
+        "128109841",
+    )
 
     res = exporter.process_skus_for_catalog_audit(["238034500"], "FAKE_TOKEN", gumga_token="GUMGA")
     item = res["items"][0]
     assert item["anymarket"]["any_id"] == "7131999157"
     assert item["anymarket"]["any_sku_id"] == "128109841"
     assert item["anymarket"]["title"] == "iPhone 15 256 Preto"
-    mock_get_product.assert_called_with("7131999157", "GUMGA", "SELETA")
-    mock_get_sku.assert_called_with("7131999157", "128109841", "GUMGA", "SELETA")
+    mock_load_any.assert_called_once()
+    call_kw = mock_load_any.call_args.kwargs
+    assert call_kw["product_id"] == "7131999157"
+    assert call_kw["sku_id"] == "128109841"
     mock_find.assert_not_called()
 
 

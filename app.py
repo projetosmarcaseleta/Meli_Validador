@@ -15,6 +15,8 @@ from openpyxl.styles import Font, PatternFill, Alignment
 
 from anymarket_api import validate_gumga_token
 from api import validate_token
+from clients import get_client, get_default_client, get_support_client, public_clients
+from support_app import is_support_configured, parse_support_oi, search_organizations
 from config import ANYMARKET_PLATFORM, GUMGA_TOKEN, AI_PREVALIDATION_ENABLED, MELI_TOKEN_WEBHOOK_URL, HTTP_TIMEOUT, get_gumga_token
 from n8n_token import fetch_meli_token_from_n8n
 from exporter import (
@@ -36,6 +38,53 @@ except ImportError:
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "relatorios-meli-dev")
 PUBLIC_EXPORT_URL = os.environ.get("PUBLIC_EXPORT_URL", "https://app.marcaseleta.shop/auditarcatalogo")
+
+
+def _resolve_client(data: dict | None):
+    payload = data or {}
+    raw_id = str(payload.get("client_id") or "").strip()
+    client_name = str(payload.get("client_name") or "").strip()
+    if parse_support_oi(raw_id):
+        return get_support_client(raw_id, name=client_name) or get_default_client()
+    return get_client(raw_id) or get_default_client()
+
+
+def _env_gumga_token() -> str:
+    return (
+        get_gumga_token()
+        or os.environ.get("GUMGA_TOKEN")
+        or os.environ.get("ANYMARKET_GUMGA_TOKEN")
+        or GUMGA_TOKEN
+        or ""
+    ).strip()
+
+
+def _client_credentials(data: dict | None) -> dict:
+    client = _resolve_client(data)
+    payload = data or {}
+    env_gumga = _env_gumga_token()
+    if env_gumga:
+        gumga_token = env_gumga
+        any_platform = (payload.get("any_platform") or ANYMARKET_PLATFORM or "SELETA").strip()
+        backoffice_ok = bool(validate_gumga_token(gumga_token, any_platform).get("valid"))
+    else:
+        gumga_token = (
+            (payload.get("gumga_token") or "").strip()
+            or client.gumga_token
+            or ""
+        ).strip()
+        any_platform = (client.platform or payload.get("any_platform") or ANYMARKET_PLATFORM or "SELETA").strip()
+        backoffice_ok = getattr(client, "backoffice_api_ok", True)
+    return {
+        "client": client,
+        "gumga_token": gumga_token,
+        "any_platform": any_platform,
+        "sku_webhook_url": client.sku_webhook_url,
+        "meli_token_webhook_url": client.meli_token_webhook_url or MELI_TOKEN_WEBHOOK_URL,
+        "oi": client.oi,
+        "meli_access_token": client.meli_access_token,
+        "backoffice_api_ok": backoffice_ok,
+    }
 
 
 def _write_excel(rows: list) -> io.BytesIO:
@@ -129,11 +178,53 @@ def _write_excel(rows: list) -> io.BytesIO:
 @app.route("/auditarcatalogo")
 @app.route("/auditarcatalogo/")
 def export_index():
+    default_client = get_default_client()
     return render_template(
         "index.html",
-        default_gumga_token=GUMGA_TOKEN or "",
-        default_any_platform=ANYMARKET_PLATFORM or "SELETA",
+        clients=public_clients(),
+        default_client_id=default_client.id,
+        default_gumga_token="",
+        default_any_platform=default_client.platform,
     )
+
+
+@app.route("/api/clients", methods=["GET"])
+@app.route("/auditarcatalogo/api/clients", methods=["GET"])
+def api_clients():
+    default_client = get_default_client()
+    return jsonify({
+        "success": True,
+        "clients": public_clients(),
+        "default_id": default_client.id,
+        "support_configured": is_support_configured(),
+    })
+
+
+@app.route("/api/clients/search", methods=["GET"])
+@app.route("/auditarcatalogo/api/clients/search", methods=["GET"])
+def api_clients_search():
+    query = str(request.args.get("q") or request.args.get("query") or "").strip()
+    result = search_organizations(query)
+    if not result.get("ok"):
+        return jsonify({"success": False, "error": result.get("error") or "Falha na busca."}), 502
+    return jsonify({"success": True, "clients": result.get("data") or []})
+
+
+@app.route("/api/clients/select", methods=["POST"])
+@app.route("/auditarcatalogo/api/clients/select", methods=["POST"])
+def api_clients_select():
+    data = request.get_json(silent=True) or {}
+    client_id = str(data.get("client_id") or data.get("oi") or "").strip()
+    client_name = str(data.get("client_name") or data.get("name") or "").strip()
+    client = get_support_client(client_id, name=client_name)
+    if not client:
+        return jsonify({"success": False, "error": "Não foi possível carregar o cliente na support-app."}), 404
+    public = client.public_dict()
+    return jsonify({
+        "success": True,
+        "client": public,
+        "meli_token": client.meli_access_token,
+    })
 
 
 @app.route("/api/validate_token", methods=["POST"])
@@ -153,7 +244,8 @@ def api_validate_token():
 @app.route("/api/refresh_token", methods=["POST"])
 @app.route("/auditarcatalogo/api/refresh_token", methods=["POST"])
 def api_refresh_token():
-    result = fetch_meli_token_from_n8n(MELI_TOKEN_WEBHOOK_URL, timeout=HTTP_TIMEOUT)
+    creds = _client_credentials(request.get_json(silent=True) or {})
+    result = fetch_meli_token_from_n8n(creds["meli_token_webhook_url"], timeout=HTTP_TIMEOUT)
     if not result.get("ok"):
         return jsonify({"success": False, "error": result.get("error") or "Falha ao renovar o token."}), 502
 
@@ -216,20 +308,17 @@ def api_import_spreadsheet():
 @app.route("/auditarcatalogo/api/export", methods=["POST"])
 def api_export():
     data = request.json or {}
-    token = (data.get("token") or "").strip()
+    creds = _client_credentials(data)
+    token = (data.get("token") or creds["meli_access_token"] or "").strip()
     mode = (data.get("mode") or "catalog").strip().lower()
     sku_list = data.get("skus", [])
     mlb_list = data.get("mlbs", [])
     import_rows = data.get("import_rows") or []
-    gumga_token = (
-        data.get("gumga_token")
-        or get_gumga_token()
-        or os.environ.get("GUMGA_TOKEN")
-        or os.environ.get("ANYMARKET_GUMGA_TOKEN")
-        or GUMGA_TOKEN
-        or ""
-    ).strip()
-    any_platform = (data.get("any_platform") or ANYMARKET_PLATFORM or "SELETA").strip()
+    gumga_token = creds["gumga_token"]
+    any_platform = creds["any_platform"]
+    sku_webhook_url = creds["sku_webhook_url"]
+    client_id = creds["client"].id
+    oi = creds["oi"]
     reviews = data.get("reviews") or {}
     filter_decision = (data.get("filter_decision") or "all").strip().lower()
 
@@ -238,7 +327,9 @@ def api_export():
 
     # Modo Catálogo (por SKU)
     if mode == "catalog" or sku_list:
-        if import_rows:
+        if sku_list:
+            sku_list = [str(s).strip() for s in sku_list if str(s).strip()]
+        elif import_rows:
             sku_from_import = [
                 str(r.get("sku") or r.get("id_sku") or "").strip()
                 for r in import_rows
@@ -246,7 +337,7 @@ def api_export():
             ]
             if sku_from_import:
                 sku_list = sku_from_import
-        elif not sku_list and mlb_list:
+        elif mlb_list:
             # Caso o usuário tenha colado SKUs no campo geral
             sku_list = mlb_list
 
@@ -265,6 +356,11 @@ def api_export():
                 reviews=reviews or None,
                 filter_decision=filter_decision,
                 audit_items=audit_items if isinstance(audit_items, list) and audit_items else None,
+                gumga_token=gumga_token,
+                any_platform=any_platform,
+                sku_webhook_url=sku_webhook_url,
+                client_id=client_id,
+                oi=oi,
             )
         except Exception as exc:
             return jsonify({"success": False, "error": f"Erro interno: {str(exc)}"}), 500
@@ -369,27 +465,26 @@ def api_export():
 @app.route("/auditarcatalogo/api/audit", methods=["POST"])
 def api_audit():
     data = request.json or {}
-    token = (data.get("token") or "").strip()
+    creds = _client_credentials(data)
+    token = (data.get("token") or creds["meli_access_token"] or "").strip()
     mode = (data.get("mode") or "catalog").strip().lower()
     sku_list = data.get("skus", [])
     mlb_list = data.get("mlbs", [])
     import_rows = data.get("import_rows") or []
-    gumga_token = (
-        data.get("gumga_token")
-        or get_gumga_token()
-        or os.environ.get("GUMGA_TOKEN")
-        or os.environ.get("ANYMARKET_GUMGA_TOKEN")
-        or GUMGA_TOKEN
-        or ""
-    ).strip()
-    any_platform = (data.get("any_platform") or ANYMARKET_PLATFORM or "SELETA").strip()
+    gumga_token = creds["gumga_token"]
+    any_platform = creds["any_platform"]
+    sku_webhook_url = creds["sku_webhook_url"]
+    client_id = creds["client"].id
+    oi = creds["oi"]
 
     if not token:
         return jsonify({"success": False, "error": "Token do Mercado Livre é obrigatório."}), 400
 
     # Modo 1: Catálogo vs Tradicional ML (por SKU)
     if mode == "catalog" or sku_list:
-        if import_rows:
+        if sku_list:
+            sku_list = [str(s).strip() for s in sku_list if str(s).strip()]
+        elif import_rows:
             sku_from_import = [
                 str(r.get("sku") or r.get("id_sku") or "").strip()
                 for r in import_rows
@@ -397,26 +492,43 @@ def api_audit():
             ]
             if sku_from_import:
                 sku_list = sku_from_import
-        elif not sku_list and mlb_list:
+        elif mlb_list:
             sku_list = mlb_list
 
         if not sku_list:
             return jsonify({"success": False, "error": "Informe uma lista de SKUs."}), 400
 
-        print(f"[AUDIT CATÁLOGO] {len(sku_list)} SKUs | gumga={len(gumga_token)} chars", flush=True)
+        print(
+            f"[AUDIT CATÁLOGO] {len(sku_list)} SKUs={sku_list} | client={client_id} "
+            f"| gumga={len(gumga_token)} chars | webhook={'sim' if sku_webhook_url else 'nao'}",
+            flush=True,
+        )
         try:
             result = process_skus_for_catalog_audit(
                 sku_list,
                 token,
                 gumga_token=gumga_token,
                 any_platform=any_platform,
+                sku_webhook_url=sku_webhook_url,
+                client_id=client_id,
+                oi=oi,
             )
+            warnings = list(result.get("errors") or [])
+            if gumga_token and not creds.get("backoffice_api_ok", True):
+                oi_hint = (oi or "").rstrip(".") or "OI"
+                warnings.append(
+                    f"[ANYMARKET] API v2 não autenticou (platform={any_platform}). "
+                    f"Configure ANYMARKET_GUMGA_OI_{oi_hint} e ANYMARKET_PLATFORM_OI_{oi_hint} no .env."
+                )
             return jsonify({
                 "success": True,
                 "mode": "catalog",
+                "client_id": client_id,
+                "any_platform": any_platform,
                 "summary": result.get("summary", {}),
                 "items": result.get("items", []),
-                "warnings": result.get("errors", []),
+                "warnings": warnings,
+                "lookup": result.get("lookup") or {},
             })
         except Exception as exc:
             return jsonify({"success": False, "error": f"Erro interno: {str(exc)}"}), 500

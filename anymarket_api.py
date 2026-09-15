@@ -1,7 +1,13 @@
 """
 anymarket_api.py – Cliente da API Backoffice v2 do AnyMarket.
 
-Auth: headers gumgaToken + platform em todas as chamadas.
+Auth: header gumgaToken (+ platform quando configurado).
+
+Endpoints oficiais usados na auditoria:
+  GET /products/{id}
+  GET /products/{productId}/skus
+  GET /products/{productId}/skus/{skuId}
+  GET /skus/{skuId}/marketplaces/{id}
 """
 
 from __future__ import annotations
@@ -112,8 +118,11 @@ def validate_gumga_token(gumga_token: str, platform: str | None = None) -> dict:
 
 
 def get_product(product_id: int | str, gumga_token: str, platform: str | None = None) -> dict:
-    """GET /products/{id} – detalhes do produto."""
-    url = f"{ANYMARKET_API_BASE_URL.rstrip('/')}/products/{product_id}"
+    """GET /products/{id} – detalhes completos do produto (Product)."""
+    pid = str(product_id or "").strip()
+    if not pid or not (gumga_token or "").strip():
+        return {}
+    url = f"{ANYMARKET_API_BASE_URL.rstrip('/')}/products/{pid}"
     try:
         resp = _session().get(
             url,
@@ -129,12 +138,46 @@ def get_product(product_id: int | str, gumga_token: str, platform: str | None = 
             raise PermissionError(msg or "Token AnyMarket inválido (401).")
         resp.raise_for_status()
         data = resp.json()
+        if isinstance(data, dict) and data.get("id") is not None:
+            print(f"[ANYMARKET] GET /products/{pid}", flush=True)
         return data if isinstance(data, dict) else {}
     except PermissionError:
         raise
     except Exception as exc:
         print(f"[ANYMARKET ERRO] GET {url} -> {type(exc).__name__}: {exc}")
         return {}
+
+
+def list_product_skus(
+    product_id: int | str,
+    gumga_token: str,
+    platform: str | None = None,
+) -> list[dict]:
+    """GET /products/{productId}/skus – lista todos os SKUs do produto."""
+    pid = str(product_id or "").strip()
+    if not pid or not (gumga_token or "").strip():
+        return []
+    url = f"{ANYMARKET_API_BASE_URL.rstrip('/')}/products/{pid}/skus"
+    try:
+        resp = _session().get(
+            url,
+            headers=_headers(gumga_token, platform),
+            proxies=_PROXIES,
+            timeout=HTTP_TIMEOUT,
+        )
+        if resp.status_code == 404:
+            return []
+        if resp.status_code == 401:
+            body = _content(resp)
+            msg = body.get("message") if isinstance(body, dict) else ""
+            raise PermissionError(msg or "Token AnyMarket inválido (401).")
+        resp.raise_for_status()
+        return [item for item in _extract_content_list(resp.json()) if isinstance(item, dict)]
+    except PermissionError:
+        raise
+    except Exception as exc:
+        print(f"[ANYMARKET ERRO] GET {url} -> {type(exc).__name__}: {exc}")
+        return []
 
 
 def get_product_sku(
@@ -170,6 +213,136 @@ def get_product_sku(
     except Exception as exc:
         print(f"[ANYMARKET ERRO] GET {url} -> {type(exc).__name__}: {exc}")
         return {}
+
+
+def get_sku_marketplace(
+    sku_id: int | str,
+    marketplace_listing_id: int | str,
+    gumga_token: str,
+    platform: str | None = None,
+) -> dict:
+    """GET /skus/{skuId}/marketplaces/{id} – detalhes do anúncio."""
+    sid = str(sku_id or "").strip()
+    lid = str(marketplace_listing_id or "").strip()
+    if not sid or not lid or not (gumga_token or "").strip():
+        return {}
+    url = f"{ANYMARKET_API_BASE_URL.rstrip('/')}/skus/{sid}/marketplaces/{lid}"
+    try:
+        resp = _session().get(
+            url,
+            headers=_headers(gumga_token, platform),
+            proxies=_PROXIES,
+            timeout=HTTP_TIMEOUT,
+        )
+        if resp.status_code == 404:
+            return {}
+        if resp.status_code == 401:
+            body = _content(resp)
+            msg = body.get("message") if isinstance(body, dict) else ""
+            raise PermissionError(msg or "Token AnyMarket inválido (401).")
+        resp.raise_for_status()
+        data = resp.json()
+        return data if isinstance(data, dict) else {}
+    except PermissionError:
+        raise
+    except Exception as exc:
+        print(f"[ANYMARKET ERRO] GET {url} -> {type(exc).__name__}: {exc}")
+        return {}
+
+
+def _pick_sku_from_list(skus: list[dict], partner_sku: str) -> dict | None:
+    candidate_set = set(_sku_lookup_candidates(partner_sku))
+    if not candidate_set:
+        return None
+    for item in skus:
+        if _item_matches_sku(item, candidate_set):
+            return item
+    return None
+
+
+def load_product_for_sku_audit(
+    gumga_token: str,
+    platform: str | None = None,
+    *,
+    product_id: str = "",
+    sku_id: str = "",
+    partner_sku: str = "",
+    marketplace_pairs: list[tuple[str, str]] | None = None,
+) -> tuple[dict, str]:
+    """
+    Carrega produto + SKU usando endpoints oficiais (sempre GET /products/{id} quando há product_id):
+    /products/{id}, /products/{id}/skus, /products/{id}/skus/{skuId}, /skus/{skuId}/marketplaces/{id}.
+    """
+    gumga = (gumga_token or "").strip()
+    if not gumga:
+        return {}, ""
+
+    pid = str(product_id or "").strip()
+    sid = str(sku_id or "").strip()
+    partner = str(partner_sku or "").strip()
+
+    if pid and sid:
+        product = get_product(pid, gumga, platform) or {}
+        sku_detail = get_product_sku(pid, sid, gumga, platform) or {}
+        if not sku_detail and product:
+            embedded = next(
+                (
+                    s
+                    for s in (product.get("skus") or [])
+                    if isinstance(s, dict) and str(s.get("id") or "").strip() == sid
+                ),
+                None,
+            )
+            if isinstance(embedded, dict):
+                sku_detail = embedded
+        if sku_detail:
+            print(f"[ANYMARKET] GET /products/{pid}/skus/{sid}", flush=True)
+            return merge_sku_into_product(product, sku_detail), sid
+        if product:
+            return product, sid
+
+    if pid:
+        product = get_product(pid, gumga, platform) or {}
+        embedded_skus = [s for s in (product.get("skus") or []) if isinstance(s, dict)]
+        skus = list_product_skus(pid, gumga, platform) if not embedded_skus else embedded_skus
+        print(f"[ANYMARKET] GET /products/{pid}/skus -> {len(skus)} item(ns)", flush=True)
+        chosen: dict | None = None
+        if partner:
+            chosen = _pick_sku_from_list(skus, partner)
+        if not chosen and len(skus) == 1:
+            chosen = skus[0]
+        if chosen:
+            sid = str(chosen.get("id") or sid).strip()
+            if sid:
+                sku_detail = get_product_sku(pid, sid, gumga, platform) or chosen
+                return merge_sku_into_product(product, sku_detail), sid
+        if product:
+            if skus:
+                merged = dict(product)
+                merged["skus"] = skus
+                return merged, sid
+            return product, sid
+
+    for m_sid, m_lid in marketplace_pairs or []:
+        ms = str(m_sid or "").strip()
+        ml = str(m_lid or "").strip()
+        if not ms or not ml:
+            continue
+        listing = get_sku_marketplace(ms, ml, gumga, platform)
+        if not listing:
+            continue
+        print(f"[ANYMARKET] GET /skus/{ms}/marketplaces/{ml}", flush=True)
+        lp_pid = _product_id_from_listing(listing)
+        lsid = ms or _sku_id_from_listing(listing)
+        if lp_pid:
+            product = get_product(lp_pid, gumga, platform) or {}
+            sku_detail = get_product_sku(lp_pid, lsid, gumga, platform) if lsid else {}
+            if sku_detail:
+                return merge_sku_into_product(product, sku_detail), lsid
+            if product:
+                return product, lsid
+
+    return {}, sid
 
 
 def merge_sku_into_product(product: dict, sku: dict) -> dict:
@@ -1023,6 +1196,6 @@ def match_values(ml_value: str, any_value: str) -> str:
     # tamanhos agregados: considera OK se conjuntos forem iguais
     ml_parts = {p.strip() for p in ml_norm.split("|") if p.strip()}
     any_parts = {p.strip() for p in any_norm.split("|") if p.strip()}
-    if ml_parts and ml_parts == any_parts:
+    if ml_parts and any_parts and ml_parts == any_parts:
         return "OK"
     return "DIVERGENTE"

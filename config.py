@@ -34,6 +34,9 @@ ANYMARKET_API_BASE_URL = os.environ.get(
 ANYMARKET_PLATFORM = os.environ.get("ANYMARKET_PLATFORM", "SELETA")
 GUMGA_TOKEN = os.environ.get("GUMGA_TOKEN", os.environ.get("ANYMARKET_GUMGA_TOKEN", ""))
 
+# Workflow n8n: https://api.marcaseleta.shop/workflow/zAxE6ZpLgyLyFqu7
+SELETA_SKU_WEBHOOK_URL = "https://api.marcaseleta.shop/webhook/consultar-skus-anymarket"
+
 
 def get_gumga_token() -> str:
     """Lê o gumgaToken na hora da requisição (não só na importação do módulo)."""
@@ -47,7 +50,7 @@ def get_gumga_token() -> str:
 # Webhook n8n para consulta de SKUs (Prioritário para VPS sem acesso direto ao banco)
 ANYMARKET_SKU_WEBHOOK_URL = os.environ.get(
     "ANYMARKET_SKU_WEBHOOK_URL",
-    os.environ.get("N8N_SKU_WEBHOOK_URL", "")
+    os.environ.get("N8N_SKU_WEBHOOK_URL", SELETA_SKU_WEBHOOK_URL),
 ).strip().strip("'\"")
 
 # Database Read-Replica (Fallback para ambiente local/VPN direta)
@@ -71,3 +74,19 @@ OPENAI_MAX_IMAGES_PER_SIDE = int(os.environ.get("OPENAI_MAX_IMAGES_PER_SIDE", "3
 
 # Pré-validação IA (desligada por padrão — ligar com AI_PREVALIDATION_ENABLED=1)
 AI_PREVALIDATION_ENABLED = os.environ.get("AI_PREVALIDATION_ENABLED", "0").strip().lower() in ("1", "true", "yes")
+
+# Support App AnyMarket (busca de cliente + marketplaces). Token só no .env.
+ANYMARKET_SUPPORT_BASE_URL = os.environ.get(
+    "ANYMARKET_SUPPORT_BASE_URL",
+    "http://support-app.anymarket.internal",
+).strip().rstrip("/")
+ANYMARKET_SUPPORT_TOKEN = os.environ.get("ANYMARKET_SUPPORT_TOKEN", "").strip()
+
+
+def get_support_token() -> str:
+    current = (os.environ.get("ANYMARKET_SUPPORT_TOKEN") or "").strip()
+    if current:
+        return current
+    if load_dotenv:
+        load_dotenv(_here / ".env", override=True)
+    return (os.environ.get("ANYMARKET_SUPPORT_TOKEN") or ANYMARKET_SUPPORT_TOKEN or "").strip()

@@ -205,6 +205,7 @@
     .input-row input { flex: 1 1 220px; min-width: 0; }
     .input-row .btn-verify { flex: 0 0 auto; }
 
+    select,
     input[type="text"], textarea {
       font-family: 'Inter', sans-serif;
       font-size: 12.5px;
@@ -243,7 +244,55 @@
       cursor: pointer;
     }
 
-    input[type="text"]:focus, textarea:focus {
+    select {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%2394A3B8' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      padding-right: 32px;
+      cursor: pointer;
+    }
+
+    .client-search-wrap { position: relative; }
+    .client-results {
+      display: none;
+      position: absolute;
+      z-index: 20;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      max-height: 240px;
+      overflow: auto;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-sm);
+      box-shadow: 0 12px 30px rgba(0,0,0,.45);
+    }
+    .client-results.open { display: block; }
+    .client-result {
+      width: 100%;
+      text-align: left;
+      padding: 9px 12px;
+      background: transparent;
+      border: 0;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+    }
+    .client-result:last-child { border-bottom: 0; }
+    .client-result:hover, .client-result:focus {
+      background: rgba(56,189,248,.08);
+      outline: none;
+    }
+    .client-result small {
+      display: block;
+      color: var(--text-3);
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    input[type="text"]:focus, textarea:focus, select:focus {
       border-color: var(--border-focus);
       box-shadow: 0 0 0 2px rgba(56,189,248,.15);
     }
@@ -1390,6 +1439,27 @@
 
     <div class="card">
       <div class="fields">
+        <div class="section-title">Cliente</div>
+        <div class="field">
+          <label class="field-label" for="input-client-search">
+            <span>Conta AnyMarket</span>
+            <span class="opt">busca na support-app</span>
+          </label>
+          <div class="client-search-wrap">
+            <input id="input-client-search" type="text" placeholder="Ex.: Kabum, Seleta, Magazine..." autocomplete="off" aria-label="Buscar cliente AnyMarket" tabindex="0" />
+            <div id="client-results" class="client-results" role="listbox" aria-label="Resultados de clientes"></div>
+          </div>
+          <select id="input-client" aria-label="Clientes salvos no servidor" tabindex="0">
+            {% for client in clients %}
+            <option value="{{ client.id }}" {% if client.id == default_client_id %}selected{% endif %}>
+              {{ client.name }}{% if client.platform %} · {{ client.platform }}{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+          <div id="client-chip" class="token-status"></div>
+        </div>
+
+        <div class="divider"></div>
         <div class="section-title">Autenticação Mercado Livre</div>
 
         <!-- Token ML -->
@@ -1796,6 +1866,12 @@
 
 <script>
   const $ = id => document.getElementById(id);
+  const SERVER_CLIENTS = {{ clients | default([]) | tojson }};
+  const DEFAULT_CLIENT_ID = {{ default_client_id | default('seleta') | tojson }};
+  const CLIENT_STORAGE_KEY = 'auditor_client_id';
+  const CLIENT_NAME_STORAGE_KEY = 'auditor_client_name';
+  let selectedSupportClient = null;
+  let clientSearchTimer = null;
 
   let importRows = [];
   let auditItems = [];
@@ -1820,6 +1896,162 @@
       .split(/[\n,;\s]+/)
       .map(s => s.trim())
       .filter(Boolean);
+  }
+
+  function getSelectedClientId() {
+    if (selectedSupportClient && selectedSupportClient.id) return selectedSupportClient.id;
+    const select = $('input-client');
+    return (select && select.value) || DEFAULT_CLIENT_ID;
+  }
+
+  function getSelectedClientName() {
+    if (selectedSupportClient && selectedSupportClient.name) return selectedSupportClient.name;
+    const select = $('input-client');
+    if (select && select.selectedOptions && select.selectedOptions[0]) {
+      return select.selectedOptions[0].textContent.trim();
+    }
+    return '';
+  }
+
+  function clientPayload() {
+    return {
+      client_id: getSelectedClientId(),
+      client_name: getSelectedClientName()
+    };
+  }
+
+  function findClient(clientId) {
+    if (selectedSupportClient && selectedSupportClient.id === clientId) return selectedSupportClient;
+    return (SERVER_CLIENTS || []).find(c => c.id === clientId) || SERVER_CLIENTS[0] || null;
+  }
+
+  function updateClientChip() {
+    const chip = $('client-chip');
+    const client = findClient(getSelectedClientId());
+    if (!chip || !client) return;
+    const parts = [];
+    if (client.source === 'support') parts.push('support-app');
+    parts.push(client.has_ml || client.has_sku_webhook ? (client.has_ml ? 'ML ligado' : 'n8n ligado') : 'sem ML');
+    if (client.marketplaces && client.marketplaces.length) parts.push(client.marketplaces.join(', '));
+    chip.className = (client.has_ml || client.has_gumga || client.has_sku_webhook) ? 'token-status ok' : 'token-status err';
+    chip.textContent = `${client.name} · ${parts.join(' · ')}`;
+  }
+
+  function closeClientResults() {
+    const box = $('client-results');
+    if (box) box.classList.remove('open');
+  }
+
+  function renderClientResults(clients) {
+    const box = $('client-results');
+    if (!box) return;
+    if (!clients.length) {
+      box.innerHTML = '<button type="button" class="client-result" disabled>Nenhum cliente encontrado</button>';
+      box.classList.add('open');
+      return;
+    }
+    box.innerHTML = clients.map(client => `
+      <button type="button" class="client-result" data-client-id="${escapeHtml(client.id)}" data-client-name="${escapeHtml(client.name)}" tabindex="0">
+        ${escapeHtml(client.name)}
+        <small>${client.active ? 'Ativo' : 'Inativo'} · ${escapeHtml(client.oi || client.id)}</small>
+      </button>
+    `).join('');
+    box.classList.add('open');
+    box.querySelectorAll('.client-result').forEach(btn => {
+      btn.addEventListener('click', () => selectSupportClient(btn.dataset.clientId, btn.dataset.clientName));
+    });
+  }
+
+  async function searchSupportClients(query) {
+    const term = (query || '').trim();
+    if (term.length < 2) {
+      closeClientResults();
+      return;
+    }
+    try {
+      const res = await fetch(`{{ url_for("api_clients_search") }}?q=${encodeURIComponent(term)}`);
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        $('client-chip').className = 'token-status err';
+        $('client-chip').textContent = data.error || 'Falha ao buscar clientes.';
+        return;
+      }
+      renderClientResults(data.clients || []);
+    } catch {
+      $('client-chip').className = 'token-status err';
+      $('client-chip').textContent = 'Sem acesso à support-app. Verifique a VPN.';
+    }
+  }
+
+  async function selectSupportClient(clientId, clientName) {
+    closeClientResults();
+    const chip = $('client-chip');
+    chip.className = 'token-status';
+    chip.style.display = 'flex';
+    chip.textContent = `Carregando ${clientName}...`;
+    try {
+      const res = await fetch('{{ url_for("api_clients_select") }}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId, client_name: clientName })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success || !data.client) {
+        chip.className = 'token-status err';
+        chip.textContent = data.error || 'Falha ao selecionar o cliente.';
+        return;
+      }
+      selectedSupportClient = data.client;
+      localStorage.setItem(CLIENT_STORAGE_KEY, data.client.id);
+      localStorage.setItem(CLIENT_NAME_STORAGE_KEY, data.client.name);
+      $('input-client-search').value = data.client.name;
+      if (data.meli_token) {
+        $('input-token').value = data.meli_token;
+        $('token-chip').className = 'token-status ok';
+        $('token-chip').textContent = `Token ML preenchido · ${data.client.name}`;
+      }
+      updateClientChip();
+    } catch {
+      chip.className = 'token-status err';
+      chip.textContent = 'Erro ao carregar marketplaces do cliente.';
+    }
+  }
+
+  function initClientSelector() {
+    const select = $('input-client');
+    const search = $('input-client-search');
+    const saved = localStorage.getItem(CLIENT_STORAGE_KEY);
+    const savedName = localStorage.getItem(CLIENT_NAME_STORAGE_KEY) || '';
+    if (select && saved && [...select.options].some(opt => opt.value === saved)) {
+      select.value = saved;
+    }
+    if (search && saved && String(saved).startsWith('support:')) {
+      selectedSupportClient = { id: saved, name: savedName, source: 'support' };
+      search.value = savedName;
+    }
+    if (select) {
+      select.addEventListener('change', () => {
+        selectedSupportClient = null;
+        localStorage.setItem(CLIENT_STORAGE_KEY, select.value);
+        localStorage.removeItem(CLIENT_NAME_STORAGE_KEY);
+        if (search) search.value = '';
+        updateClientChip();
+      });
+    }
+    if (search) {
+      search.addEventListener('input', () => {
+        clearTimeout(clientSearchTimer);
+        clientSearchTimer = setTimeout(() => searchSupportClients(search.value), 280);
+      });
+      search.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeClientResults();
+      });
+    }
+    document.addEventListener('click', (event) => {
+      const wrap = event.target.closest('.client-search-wrap');
+      if (!wrap) closeClientResults();
+    });
+    updateClientChip();
   }
 
   // File Import
@@ -1855,6 +2087,7 @@
       $('input-skus').value = extractedSkus.join('\n');
       chip.className = 'token-status ok';
       chip.textContent = `✓ ${extractedSkus.length} SKU(s) importado(s)`;
+      $('input-skus').addEventListener('input', () => { importRows = []; }, { once: true });
     } catch {
       chip.className = 'token-status err';
       chip.textContent = 'Erro de conexão ao ler planilha.';
@@ -1875,7 +2108,7 @@
       const res = await fetch('{{ url_for("api_refresh_token") }}', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: '{}'
+        body: JSON.stringify(clientPayload())
       });
       const data = await res.json();
       if (!res.ok || !data.success || !data.token) {
@@ -1975,7 +2208,8 @@
           token,
           skus,
           mode: 'catalog',
-          import_rows: importRows
+          import_rows: importRows,
+          ...clientPayload()
         })
       });
 
@@ -2003,6 +2237,12 @@
       const warnings = data.warnings || [];
       if (warnings.length) {
         showToast(warnings.slice(0, 3).map(w => escapeHtml(w)).join('<br>'), 'warn');
+      }
+      const lookup = data.lookup || {};
+      if (lookup.webhook_called) {
+        showToast(lookup.webhook_ok ? 'n8n: mapa SKU recebido' : 'n8n: webhook falhou', lookup.webhook_ok ? 'success' : 'warn');
+      } else {
+        showToast('n8n: webhook não chamado para este cliente', 'warn');
       }
 
   auditDecisions = {};
@@ -2332,6 +2572,7 @@
         mode: 'catalog',
         reviews: auditDecisions,
         filter_decision: filterDecision,
+        ...clientPayload(),
       };
       if (hasAuditCache) payload.audit_items = auditItems;
 
@@ -3048,6 +3289,8 @@
   $('btn-sync-all-sheet').addEventListener('click', syncAllApprovedToGoogleSheet);
 
   // Init UI
+  initClientSelector();
+  $('input-skus').addEventListener('input', () => { importRows = []; });
   updateSheetSyncUI();
 
   function escapeHtml(str) {

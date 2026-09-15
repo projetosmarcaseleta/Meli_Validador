@@ -12,6 +12,7 @@ from anymarket_api import (
     extract_anymarket_fields,
     find_product_by_ean,
     find_product_by_partner_id,
+    load_product_for_sku_audit,
     get_product,
     get_product_sku,
     merge_sku_into_product,
@@ -50,6 +51,13 @@ HEADERS = [
 
 _MLB_PATTERN = re.compile(r"^MLB\d+$", re.IGNORECASE)
 _last_db_error: str | None = None
+_last_webhook_meta: dict = {
+    "called": False,
+    "ok": False,
+    "url": "",
+    "status": None,
+    "error": "",
+}
 
 
 def _is_mlb(value: str) -> bool:
@@ -58,6 +66,27 @@ def _is_mlb(value: str) -> bool:
 
 def _get_last_db_error() -> str | None:
     return _last_db_error
+
+
+def _get_last_webhook_meta() -> dict:
+    return dict(_last_webhook_meta)
+
+
+def _reset_webhook_meta() -> None:
+    global _last_webhook_meta
+    _last_webhook_meta = {
+        "called": False,
+        "ok": False,
+        "url": "",
+        "status": None,
+        "error": "",
+    }
+
+
+def _effective_sku_webhook_url(webhook_url: str | None = None) -> str:
+    if webhook_url is not None:
+        return str(webhook_url).strip().strip("'\"")
+    return (ANYMARKET_SKU_WEBHOOK_URL or "").strip().strip("'\"")
 
 
 def _merge_sku_maps(target: dict[str, dict], source: dict[str, dict]) -> None:
@@ -78,13 +107,25 @@ def _merge_sku_maps(target: dict[str, dict], source: dict[str, dict]) -> None:
             target[sku]["any_sku_id"] = sid
 
 
-def _append_mlb_slot(sku_map: dict[str, dict], sku: str, mlb: str, is_catalog: bool, status: str = "") -> None:
+def _append_mlb_slot(
+    sku_map: dict[str, dict],
+    sku: str,
+    mlb: str,
+    is_catalog: bool,
+    status: str = "",
+    marketplace_listing_id: str = "",
+) -> None:
     if sku not in sku_map:
-        sku_map[sku] = {"cat": [], "trad": []}
+        sku_map[sku] = {"cat": [], "trad": [], "marketplace_listing_by_mlb": {}}
+    if "marketplace_listing_by_mlb" not in sku_map[sku]:
+        sku_map[sku]["marketplace_listing_by_mlb"] = {}
     side = "cat" if is_catalog else "trad"
     existing = {m for m, _ in sku_map[sku][side]}
     if mlb not in existing:
         sku_map[sku][side].append((mlb, status or "active"))
+    lid = str(marketplace_listing_id or "").strip()
+    if mlb and lid:
+        sku_map[sku]["marketplace_listing_by_mlb"][mlb] = lid
 
 
 def _any_product_id_from_payload(val: dict) -> str:
@@ -131,6 +172,26 @@ def _mlb_slots_from_webhook(entries) -> list[tuple[str, str]]:
     return slots
 
 
+def _marketplace_pairs_for_sku(slots: dict, sku_id_hint: str) -> list[tuple[str, str]]:
+    """Pares (sku_id, id anúncio AnyMarket) para GET /skus/{skuId}/marketplaces/{id}."""
+    sid = str(sku_id_hint or slots.get("any_sku_id") or "").strip()
+    by_mlb = slots.get("marketplace_listing_by_mlb") or {}
+    if not isinstance(by_mlb, dict):
+        return []
+    out: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for mlb, _ in (slots.get("cat") or []) + (slots.get("trad") or []):
+        lid = str(by_mlb.get(mlb) or by_mlb.get(str(mlb).upper()) or "").strip()
+        if not sid or not lid:
+            continue
+        key = (sid, lid)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
+
+
 def _ids_from_webhook_entries(entries) -> tuple[str, str]:
     if not isinstance(entries, list):
         return "", ""
@@ -148,7 +209,38 @@ def _ids_from_webhook_entries(entries) -> tuple[str, str]:
     return product_id, sku_id
 
 
+def _apply_webhook_listing_ids(sku_map: dict[str, dict], sku: str, val: dict) -> None:
+    if sku not in sku_map:
+        sku_map[sku] = {"cat": [], "trad": [], "marketplace_listing_by_mlb": {}}
+    by_mlb = sku_map[sku].setdefault("marketplace_listing_by_mlb", {})
+
+    def _ingest(entries) -> None:
+        if not isinstance(entries, list):
+            return
+        for item in entries:
+            if not isinstance(item, dict):
+                continue
+            mlb = str(
+                item.get("mlb")
+                or item.get("id_in_marketplace")
+                or item.get("idInMarketplace")
+                or ""
+            ).strip().upper()
+            lid = str(
+                item.get("marketplace_id")
+                or item.get("marketplace_listing_id")
+                or item.get("listing_id")
+                or ""
+            ).strip()
+            if mlb.startswith("MLB") and lid and lid.isdigit():
+                by_mlb[mlb] = lid
+
+    _ingest(val.get("cat"))
+    _ingest(val.get("trad"))
+
+
 def _apply_webhook_product_ids(sku_map: dict[str, dict], sku: str, val: dict) -> None:
+    _apply_webhook_listing_ids(sku_map, sku, val)
     product_id = _any_product_id_from_payload(val)
     sku_id = _any_sku_id_from_payload(val)
     if not product_id or not sku_id:
@@ -897,7 +989,59 @@ def process_mlbs_for_audit(
     }
 
 
-def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
+def _post_sku_webhook(
+    hook: str,
+    payload: dict,
+    client_id: str | None = None,
+) -> dict | None:
+    global _last_webhook_meta
+    import requests as req
+
+    _last_webhook_meta = {
+        "called": True,
+        "ok": False,
+        "url": hook,
+        "status": None,
+        "error": "",
+    }
+    sent_skus = payload.get("skus") or payload.get("mlbs") or []
+    print(
+        f"[N8N WEBHOOK] POST {hook} client={client_id or '-'} skus={sent_skus}",
+        flush=True,
+    )
+    resp = req.post(hook, json=payload, timeout=30)
+    _last_webhook_meta["status"] = resp.status_code
+    if resp.status_code != 200:
+        _last_webhook_meta["error"] = f"HTTP {resp.status_code}: {resp.text[:200]}"
+        print(f"[N8N WEBHOOK ERRO] {_last_webhook_meta['error']}", flush=True)
+        return None
+    raw = getattr(resp, "content", None)
+    text = getattr(resp, "text", None)
+    is_empty = (
+        (isinstance(raw, (bytes, bytearray)) and not raw.strip())
+        or (isinstance(text, str) and not text.strip())
+    )
+    if is_empty:
+        _last_webhook_meta["error"] = "HTTP 200 com corpo vazio (workflow sem Respond to Webhook?)"
+        print(f"[N8N WEBHOOK ERRO] {_last_webhook_meta['error']}", flush=True)
+        return None
+    try:
+        data = resp.json() or {}
+    except ValueError:
+        _last_webhook_meta["error"] = f"Resposta nao-JSON: {resp.text[:200]}"
+        print(f"[N8N WEBHOOK ERRO] {_last_webhook_meta['error']}", flush=True)
+        return None
+    _last_webhook_meta["ok"] = True
+    return data
+
+
+def _resolve_skus_from_anymarket_db(
+    skus: list[str],
+    webhook_url: str | None = None,
+    client_id: str | None = None,
+    platform: str | None = None,
+    oi: str | None = None,
+) -> dict[str, dict]:
     """
     Consulta o banco de leitura do AnyMarket para mapear cada SKU
     aos seus anúncios no Mercado Livre (Catálogo e Tradicional).
@@ -908,21 +1052,29 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
     """
     global _last_db_error
     _last_db_error = None
+    _reset_webhook_meta()
     sku_map: dict[str, dict] = {s: {"cat": [], "trad": []} for s in skus}
     if not skus:
         return sku_map
 
+    hook = _effective_sku_webhook_url(webhook_url)
+
     # 1. Tentar via Webhook n8n se configurado
-    if ANYMARKET_SKU_WEBHOOK_URL:
+    if hook:
         try:
-            import requests as req
-            resp = req.post(
-                ANYMARKET_SKU_WEBHOOK_URL,
-                json={"skus": skus, "include": ["product_id", "sku_id"]},
-                timeout=30,
-            )
-            if resp.status_code == 200:
-                data = resp.json() or {}
+            payload = {
+                "skus": [str(s).strip() for s in skus if str(s).strip()],
+                "sku": str(skus[0]).strip() if skus else "",
+                "include": ["product_id", "sku_id"],
+            }
+            if client_id:
+                payload["client_id"] = client_id
+            if platform:
+                payload["platform"] = platform
+            if oi:
+                payload["oi"] = oi
+            data = _post_sku_webhook(hook, payload, client_id)
+            if data is not None:
                 incoming_map = data.get("sku_map") or {}
                 for s, val in incoming_map.items():
                     s_clean = str(s).strip()
@@ -932,6 +1084,14 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
                         sku_map[s_clean]["cat"] = cat_list
                         sku_map[s_clean]["trad"] = trad_list
                         _apply_webhook_product_ids(sku_map, s_clean, val if isinstance(val, dict) else {})
+                for s in skus:
+                    pid = str((sku_map.get(s) or {}).get("any_product_id") or "").strip()
+                    sid = str((sku_map.get(s) or {}).get("any_sku_id") or "").strip()
+                    if pid:
+                        print(
+                            f"[N8N WEBHOOK] {s} id_product={pid} sku_id={sid or '-'}",
+                            flush=True,
+                        )
                 webhook_hit = any(sku_map[s]["cat"] or sku_map[s]["trad"] for s in sku_map)
                 missing_pid = [
                     s for s in sku_map
@@ -945,14 +1105,13 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
                     )
                 if webhook_hit and (not missing_pid or not ANYMARKET_DB_HOST or not ANYMARKET_DB_USER):
                     return sku_map
-            else:
-                print(f"[N8N WEBHOOK ERRO] HTTP {resp.status_code}: {resp.text[:200]}")
         except Exception as exc:
+            _last_webhook_meta["error"] = str(exc)
             print(f"[N8N WEBHOOK ERRO] Falha na consulta via n8n: {exc}")
 
     # 2. Tentar via Conexão Direta ao PostgreSQL
     if not ANYMARKET_DB_HOST or not ANYMARKET_DB_USER:
-        if skus and not ANYMARKET_DB_HOST and not ANYMARKET_SKU_WEBHOOK_URL:
+        if skus and not ANYMARKET_DB_HOST and not hook:
             _last_db_error = "Réplica AnyMarket não configurada (ANYMARKET_DB_HOST/WEBHOOK ausente)."
         return sku_map
 
@@ -978,7 +1137,8 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
                             sm.sku_in_marketplace AS sku,
                             sm.id_in_marketplace AS mlb,
                             sm.is_catalog,
-                            sm.status_in_marketplace
+                            sm.status_in_marketplace,
+                            sm.id AS marketplace_listing_id
                         FROM anymarket_prd.sku_marketplace AS sm
                         WHERE sm.market_place = 'MERCADO_LIVRE'
                           AND sm.id_in_marketplace IS NOT NULL
@@ -991,8 +1151,9 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
                         mlb = str(row[1]).strip().upper()
                         is_cat = int(row[2] or 0)
                         status = str(row[3] or "")
+                        listing_id = str(row[4] or "").strip() if len(row) > 4 else ""
                         if s in sku_map and mlb.startswith("MLB"):
-                            _append_mlb_slot(sku_map, s, mlb, is_cat == 1, status)
+                            _append_mlb_slot(sku_map, s, mlb, is_cat == 1, status, listing_id)
                 _attach_anymarket_product_ids_from_db(cur, sku_map, skus)
     except Exception as exc:
         _last_db_error = str(exc)
@@ -1001,7 +1162,13 @@ def _resolve_skus_from_anymarket_db(skus: list[str]) -> dict[str, dict]:
     return sku_map
 
 
-def _resolve_mlbs_from_anymarket_db(mlbs: list[str]) -> dict[str, dict]:
+def _resolve_mlbs_from_anymarket_db(
+    mlbs: list[str],
+    webhook_url: str | None = None,
+    client_id: str | None = None,
+    platform: str | None = None,
+    oi: str | None = None,
+) -> dict[str, dict]:
     """
     Resolve MLB(s) → SKU seller via réplica AnyMarket (id_in_marketplace) ou Webhook n8n.
     Retorna mapa keyed pelo sku_in_marketplace.
@@ -1011,24 +1178,26 @@ def _resolve_mlbs_from_anymarket_db(mlbs: list[str]) -> dict[str, dict]:
     if not mlbs:
         return sku_map
 
+    hook = _effective_sku_webhook_url(webhook_url)
+
     # 1. Tentar via Webhook n8n se configurado
-    if ANYMARKET_SKU_WEBHOOK_URL:
+    if hook:
         try:
-            import requests as req
-            resp = req.post(
-                ANYMARKET_SKU_WEBHOOK_URL,
-                json={"mlbs": mlbs},
-                timeout=30,
-            )
-            if resp.status_code == 200:
-                data = resp.json() or {}
+            payload = {"mlbs": mlbs}
+            if client_id:
+                payload["client_id"] = client_id
+            if platform:
+                payload["platform"] = platform
+            if oi:
+                payload["oi"] = oi
+            data = _post_sku_webhook(hook, payload, client_id)
+            if data is not None:
                 incoming_map = data.get("sku_map") or {}
                 _merge_sku_maps(sku_map, incoming_map)
                 if sku_map:
                     return sku_map
-            else:
-                print(f"[N8N WEBHOOK ERRO] HTTP {resp.status_code}: {resp.text[:200]}")
         except Exception as exc:
+            _last_webhook_meta["error"] = str(exc)
             print(f"[N8N WEBHOOK ERRO] Falha na consulta via n8n: {exc}")
 
     # 2. Tentar via Conexão Direta ao PostgreSQL
@@ -1057,7 +1226,8 @@ def _resolve_mlbs_from_anymarket_db(mlbs: list[str]) -> dict[str, dict]:
                             sm.sku_in_marketplace AS sku,
                             sm.id_in_marketplace AS mlb,
                             sm.is_catalog,
-                            sm.status_in_marketplace
+                            sm.status_in_marketplace,
+                            sm.id AS marketplace_listing_id
                         FROM anymarket_prd.sku_marketplace AS sm
                         WHERE sm.market_place = 'MERCADO_LIVRE'
                           AND sm.id_in_marketplace IN ({mlbs})
@@ -1069,8 +1239,9 @@ def _resolve_mlbs_from_anymarket_db(mlbs: list[str]) -> dict[str, dict]:
                         mlb = str(row[1]).strip().upper()
                         is_cat = int(row[2] or 0)
                         status = str(row[3] or "")
+                        listing_id = str(row[4] or "").strip() if len(row) > 4 else ""
                         if mlb.startswith("MLB") and s:
-                            _append_mlb_slot(sku_map, s, mlb, is_cat == 1, status)
+                            _append_mlb_slot(sku_map, s, mlb, is_cat == 1, status, listing_id)
                 _attach_anymarket_product_ids_from_db(cur, sku_map, list(sku_map.keys()))
     except Exception as exc:
         _last_db_error = str(exc)
@@ -1112,8 +1283,9 @@ def _fetch_anymarket_fields_by_skus(
     sku_ids_by_sku: dict[str, str] | None = None,
     mlbs_by_sku: dict[str, list[str]] | None = None,
     eans_by_sku: dict[str, str] | None = None,
+    db_slots_by_sku: dict[str, dict] | None = None,
 ) -> dict[str, dict]:
-    """Busca o produto AnyMarket pela API v2 (SKU, ID, MLB ou EAN)."""
+    """Busca cadastro AnyMarket via GET /products/{id}, /products/.../skus e /skus/.../marketplaces/...)."""
     unique = list(dict.fromkeys(s.strip() for s in skus if s and str(s).strip() and not _is_mlb(s)))
     out: dict[str, dict] = {}
     if not unique or not (gumga_token or "").strip():
@@ -1127,30 +1299,32 @@ def _fetch_anymarket_fields_by_skus(
     mlb_map = mlbs_by_sku or {}
     ean_map = eans_by_sku or {}
 
+    slots_by_sku = db_slots_by_sku or {}
+
     def _one(sku: str) -> tuple[str, dict]:
         product = {}
         sku_id_hint = str(sku_ids.get(sku) or "").strip()
         ean_hint = str(ean_map.get(sku) or "").strip()
         product_id = str(ids_by_sku.get(sku) or "").strip()
-        if product_id:
-            try:
-                product = get_product(product_id, gumga, any_platform) or {}
-                if product and sku_id_hint:
-                    sku_detail = get_product_sku(product_id, sku_id_hint, gumga, any_platform) or {}
-                    if sku_detail:
-                        product = merge_sku_into_product(product, sku_detail)
-                if product:
-                    print(
-                        f"[ANYMARKET] SKU {sku}: GET /products/{product_id}"
-                        + (f"/skus/{sku_id_hint}" if sku_id_hint else ""),
-                        flush=True,
-                    )
-            except PermissionError as exc:
-                print(f"[ANYMARKET] SKU {sku}: token recusado ({exc})", flush=True)
-                product = {}
-            except Exception as exc:
-                print(f"[ANYMARKET] SKU {sku}: GET product {product_id} {type(exc).__name__}: {exc}", flush=True)
-                product = {}
+        slot = slots_by_sku.get(sku) or {}
+        marketplace_pairs = _marketplace_pairs_for_sku(slot, sku_id_hint)
+        try:
+            product, resolved_sid = load_product_for_sku_audit(
+                gumga,
+                any_platform,
+                product_id=product_id,
+                sku_id=sku_id_hint,
+                partner_sku=sku,
+                marketplace_pairs=marketplace_pairs,
+            )
+            if resolved_sid and not sku_id_hint:
+                sku_id_hint = resolved_sid
+        except PermissionError as exc:
+            print(f"[ANYMARKET] SKU {sku}: token recusado ({exc})", flush=True)
+            product = {}
+        except Exception as exc:
+            print(f"[ANYMARKET] SKU {sku}: {type(exc).__name__}: {exc}", flush=True)
+            product = {}
         if not product:
             try:
                 product = find_product_by_partner_id(sku, gumga, any_platform)
@@ -1227,6 +1401,9 @@ def process_skus_for_catalog_audit(
     progress_callback=None,
     gumga_token: str | None = None,
     any_platform: str | None = None,
+    sku_webhook_url: str | None = None,
+    client_id: str | None = None,
+    oi: str | None = None,
 ) -> dict:
     """
     Recebe uma lista de SKUs, consulta a réplica do AnyMarket para identificar os MLBs
@@ -1253,16 +1430,36 @@ def process_skus_for_catalog_audit(
     mlb_inputs = [s.upper() for s in skus_clean if _is_mlb(s)]
     # (rótulo exibido, sku usado na busca)
     input_rows: list[tuple[str, str]] = [(s, s) for s in sku_inputs]
-    gumga = (gumga_token if gumga_token is not None else get_gumga_token()) or ""
-    platform = (any_platform or ANYMARKET_PLATFORM or "SELETA").strip()
+    env_gumga = get_gumga_token()
+    if env_gumga:
+        gumga = env_gumga
+        platform = (ANYMARKET_PLATFORM or "SELETA").strip()
+    else:
+        gumga = (gumga_token if gumga_token is not None else "") or ""
+        platform = (any_platform or ANYMARKET_PLATFORM or "SELETA").strip()
 
     if progress_callback:
         progress_callback(10, 100, f"Mapeando anúncios de {total_skus} entrada(s)...")
 
     # 1. Réplica AnyMarket: sku_in_marketplace (SKU seller) ou id_in_marketplace (MLB)
-    db_map = _resolve_skus_from_anymarket_db(sku_inputs)
+    db_map = _resolve_skus_from_anymarket_db(
+        sku_inputs,
+        webhook_url=sku_webhook_url,
+        client_id=client_id,
+        platform=platform,
+        oi=oi,
+    )
     if mlb_inputs:
-        _merge_sku_maps(db_map, _resolve_mlbs_from_anymarket_db(mlb_inputs))
+        _merge_sku_maps(
+            db_map,
+            _resolve_mlbs_from_anymarket_db(
+                mlb_inputs,
+                webhook_url=sku_webhook_url,
+                client_id=client_id,
+                platform=platform,
+                oi=oi,
+            ),
+        )
 
     user_info = validate_token(token) if token else {}
     user_id = user_info.get("id")
@@ -1351,6 +1548,9 @@ def process_skus_for_catalog_audit(
     db_err = _get_last_db_error()
     if db_err:
         errors.append(f"[ANYMARKET DB] {db_err[:220]}")
+    webhook_meta = _get_last_webhook_meta()
+    if webhook_meta.get("called") and not webhook_meta.get("ok") and webhook_meta.get("error"):
+        errors.append(f"[N8N WEBHOOK] {str(webhook_meta.get('error') or '')[:220]}")
     if mlb_inputs and not user_id:
         errors.append("[MERCADO LIVRE] Token inválido ou expirado — informe um token válido para resolver MLB(s).")
     elif sku_inputs and not user_id and not db_map:
@@ -1390,6 +1590,7 @@ def process_skus_for_catalog_audit(
             },
             mlbs_by_sku=mlbs_by_sku,
             eans_by_sku=eans_by_sku,
+            db_slots_by_sku={sku: db_map.get(sku) or {} for sku in lookup_skus_for_any},
         )
         found_n = sum(1 for f in any_by_sku.values() if (f or {}).get("any_id"))
         print(f"[ANYMARKET] {found_n}/{len(lookup_skus_for_any)} SKU(s) com cadastro")
@@ -1513,6 +1714,12 @@ def process_skus_for_catalog_audit(
             "errors": count_err,
         },
         "errors": errors,
+        "lookup": {
+            "client_id": client_id or "",
+            "webhook_called": bool(webhook_meta.get("called")),
+            "webhook_ok": bool(webhook_meta.get("ok")),
+            "webhook_status": webhook_meta.get("status"),
+        },
     }
 
 
@@ -1522,6 +1729,11 @@ def process_skus_for_catalog_excel(
     reviews: dict[str, str] | None = None,
     filter_decision: str = "all",
     audit_items: list[dict] | None = None,
+    gumga_token: str | None = None,
+    any_platform: str | None = None,
+    sku_webhook_url: str | None = None,
+    client_id: str | None = None,
+    oi: str | None = None,
 ) -> tuple[list, list]:
     """
     Gera as linhas da planilha comparativa ML Catálogo vs ML Tradicional.
@@ -1531,7 +1743,15 @@ def process_skus_for_catalog_excel(
         items = audit_items
         errors: list[str] = []
     else:
-        audit_data = process_skus_for_catalog_audit(sku_list, token)
+        audit_data = process_skus_for_catalog_audit(
+            sku_list,
+            token,
+            gumga_token=gumga_token,
+            any_platform=any_platform,
+            sku_webhook_url=sku_webhook_url,
+            client_id=client_id,
+            oi=oi,
+        )
         items = audit_data.get("items") or []
         errors = audit_data.get("errors") or []
 

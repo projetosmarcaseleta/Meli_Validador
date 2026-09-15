@@ -7,7 +7,10 @@ from anymarket_api import (
     extract_anymarket_fields,
     find_product_by_ean,
     find_product_by_partner_id,
+    get_product,
     get_product_sku,
+    list_product_skus,
+    load_product_for_sku_audit,
     merge_sku_into_product,
     resolve_product_by_marketplace_id,
 )
@@ -229,6 +232,60 @@ def test_merge_sku_into_product_puts_specific_sku_first():
     merged = merge_sku_into_product(product, sku)
     assert merged["skus"][0]["title"] == "iPhone 15 256 Preto"
     assert [s["id"] for s in merged["skus"]] == [128109841, 1]
+
+
+def test_get_product_calls_official_endpoint():
+    class FakeResp:
+        def __init__(self, payload, status=200):
+            self.status_code = status
+            self._payload = payload
+            self.text = ""
+
+        def json(self):
+            return self._payload
+
+        def raise_for_status(self):
+            return None
+
+    session = MagicMock()
+    session.get.return_value = FakeResp({"id": 7131999157, "title": "Produto", "skus": []})
+    with patch("anymarket_api._session", return_value=session):
+        product = get_product("7131999157", "TOKEN", "SELETA")
+    assert product["id"] == 7131999157
+    args, _kwargs = session.get.call_args
+    assert args[0].endswith("/products/7131999157")
+
+
+def test_list_product_skus_calls_official_endpoint():
+    class FakeResp:
+        def __init__(self, payload, status=200):
+            self.status_code = status
+            self._payload = payload
+            self.text = ""
+
+        def json(self):
+            return self._payload
+
+        def raise_for_status(self):
+            return None
+
+    session = MagicMock()
+    session.get.return_value = FakeResp([{"id": 1, "partnerId": "ABC"}])
+    with patch("anymarket_api._session", return_value=session):
+        skus = list_product_skus("7131999157", "TOKEN", "SELETA")
+    assert len(skus) == 1
+    args, _kwargs = session.get.call_args
+    assert args[0].endswith("/products/7131999157/skus")
+
+
+def test_load_product_for_sku_audit_uses_product_and_sku_paths():
+    with patch("anymarket_api.get_product", return_value={"id": 10, "title": "P"}), patch(
+        "anymarket_api.get_product_sku", return_value={"id": 99, "partnerId": "X"}
+    ) as mock_sku:
+        product, sid = load_product_for_sku_audit("TOKEN", "SELETA", product_id="10", sku_id="99")
+    assert sid == "99"
+    assert product["skus"][0]["id"] == 99
+    mock_sku.assert_called_once()
 
 
 def test_get_product_sku_calls_official_endpoint():
