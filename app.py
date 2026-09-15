@@ -16,7 +16,8 @@ from openpyxl.styles import Font, PatternFill, Alignment
 from anymarket_api import validate_gumga_token
 from api import validate_token
 from clients import get_client, get_default_client, get_support_client, public_clients
-from support_app import is_support_configured, parse_support_oi, search_organizations
+from n8n_client import client_webhook_configured, search_clients_via_n8n, select_client_via_n8n
+from support_app import is_support_configured, parse_support_oi, search_organizations, support_client_id
 from config import ANYMARKET_PLATFORM, GUMGA_TOKEN, AI_PREVALIDATION_ENABLED, MELI_TOKEN_WEBHOOK_URL, HTTP_TIMEOUT, get_gumga_token
 from n8n_token import fetch_meli_token_from_n8n
 from exporter import (
@@ -196,27 +197,107 @@ def api_clients():
         "success": True,
         "clients": public_clients(),
         "default_id": default_client.id,
-        "support_configured": is_support_configured(),
+        "support_configured": is_support_configured() or client_webhook_configured(),
+        "client_webhook_configured": client_webhook_configured(),
     })
+
+
+def _attach_meli_validation(payload: dict, meli_token: str, *, support_context: bool) -> dict:
+    token = (meli_token or "").strip()
+    meli_valid = False
+    meli_nickname = ""
+    meli_user_id = ""
+    meli_error = ""
+    if token:
+        user = validate_token(token)
+        if user and user.get("id"):
+            meli_valid = True
+            meli_nickname = str(user.get("nickname") or "").strip()
+            meli_user_id = str(user.get("id") or "").strip()
+        else:
+            meli_error = "Token do Mercado Livre inválido ou expirado."
+    elif support_context:
+        meli_error = "Nenhuma integração Mercado Livre ativa com token nesta conta."
+    else:
+        meli_error = "Token ML não configurado. Use Atualizar Token ou selecione a conta."
+    payload["meli_token"] = token
+    payload["meli_valid"] = meli_valid
+    payload["meli_nickname"] = meli_nickname
+    payload["meli_user_id"] = meli_user_id
+    if meli_error and not meli_valid:
+        payload["warning"] = meli_error
+    client = payload.get("client")
+    if isinstance(client, dict):
+        client["has_ml"] = meli_valid or bool(token)
+    return payload
 
 
 @app.route("/api/clients/search", methods=["GET"])
 @app.route("/auditarcatalogo/api/clients/search", methods=["GET"])
 def api_clients_search():
-    query = str(request.args.get("q") or request.args.get("query") or "").strip()
-    result = search_organizations(query)
-    if not result.get("ok"):
-        return jsonify({"success": False, "error": result.get("error") or "Falha na busca."}), 502
-    return jsonify({"success": True, "clients": result.get("data") or []})
+    query = str(request.args.get("q") or request.args.get("query") or request.args.get("oi") or "").strip()
+    if len(query) < 2:
+        return jsonify({"success": False, "error": "Informe OI (mín. 5 dígitos) ou nome (mín. 2 letras)."}), 400
+
+    if client_webhook_configured():
+        result = search_clients_via_n8n(query)
+        if result.get("ok"):
+            return jsonify({"success": True, "clients": result.get("data") or [], "via": "n8n"})
+        if is_support_configured():
+            pass
+        else:
+            return jsonify({"success": False, "error": result.get("error") or "Falha na busca via n8n."}), 502
+
+    if is_support_configured():
+        result = search_organizations(query)
+        if not result.get("ok"):
+            return jsonify({"success": False, "error": result.get("error") or "Falha na busca."}), 502
+        return jsonify({"success": True, "clients": result.get("data") or [], "via": "support-app"})
+
+    return jsonify({
+        "success": False,
+        "error": "Configure ANYMARKET_CLIENT_WEBHOOK_URL (n8n na rede DB1) ou ANYMARKET_SUPPORT_* (VPN).",
+    }), 502
 
 
 @app.route("/api/clients/select", methods=["POST"])
 @app.route("/auditarcatalogo/api/clients/select", methods=["POST"])
 def api_clients_select():
     data = request.get_json(silent=True) or {}
-    client_id = str(data.get("client_id") or data.get("oi") or "").strip()
+    client_id = str(data.get("client_id") or "").strip()
+    oi_raw = str(data.get("oi") or "").strip()
     client_name = str(data.get("client_name") or data.get("name") or "").strip()
-    if parse_support_oi(client_id):
+    if not client_id and oi_raw:
+        client_id = support_client_id(oi_raw)
+
+    support_oi = parse_support_oi(client_id) or parse_support_oi(oi_raw)
+
+    if client_webhook_configured() and support_oi:
+        result = select_client_via_n8n(
+            oi=support_oi,
+            client_id=client_id,
+            client_name=client_name,
+        )
+        if not result.get("ok"):
+            return jsonify({
+                "success": False,
+                "error": result.get("error") or "Falha ao carregar conta via n8n.",
+            }), 502
+        payload = dict(result.get("data") or {})
+        if not payload.get("success"):
+            return jsonify({
+                "success": False,
+                "error": str(payload.get("error") or "Conta não encontrada."),
+            }), 404
+        payload = _attach_meli_validation(
+            payload,
+            str(payload.get("meli_token") or ""),
+            support_context=True,
+        )
+        payload["via"] = "n8n"
+        return jsonify(payload)
+
+    if support_oi:
         client = get_support_client(client_id, name=client_name)
         if not client:
             return jsonify({
@@ -234,36 +315,15 @@ def api_clients_select():
             if n8n.get("ok"):
                 meli_token = (n8n.get("token") or "").strip()
 
-    meli_valid = False
-    meli_nickname = ""
-    meli_user_id = ""
-    meli_error = ""
-    if meli_token:
-        user = validate_token(meli_token)
-        if user and user.get("id"):
-            meli_valid = True
-            meli_nickname = str(user.get("nickname") or "").strip()
-            meli_user_id = str(user.get("id") or "").strip()
-        else:
-            meli_error = "Token do Mercado Livre inválido ou expirado."
-    elif parse_support_oi(client_id):
-        meli_error = "Nenhuma integração Mercado Livre ativa com token nesta conta."
-    else:
-        meli_error = "Token ML não configurado. Use Atualizar Token ou selecione a conta na support-app."
-
-    public = client.public_dict()
-    public["has_ml"] = meli_valid or bool(meli_token)
-
-    payload = {
-        "success": True,
-        "client": public,
-        "meli_token": meli_token,
-        "meli_valid": meli_valid,
-        "meli_nickname": meli_nickname,
-        "meli_user_id": meli_user_id,
-    }
-    if meli_error and not meli_valid:
-        payload["warning"] = meli_error
+    payload = _attach_meli_validation(
+        {
+            "success": True,
+            "client": client.public_dict(),
+        },
+        meli_token,
+        support_context=bool(support_oi),
+    )
+    payload["via"] = "support-app" if support_oi else "env"
     return jsonify(payload)
 
 

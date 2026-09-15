@@ -1,0 +1,164 @@
+{
+  "name": "Meli Validador - Consulta Conta por OI (support-app U4oqQCvEYnDAYgAm)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "consultar-conta-anymarket",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "id": "webhook-conta",
+      "name": "Webhook Conta OI"
+    },
+    {
+      "parameters": {
+        "jsCode": "const root = ($json.body && typeof $json.body === 'object') ? $json.body : ($json || {});\nlet oi = String(root.oi || '').trim();\nlet q = String(root.q || root.query || '').trim();\nlet action = String(root.action || 'search').toLowerCase();\nconst clientId = String(root.client_id || '').trim();\nconst clientName = String(root.client_name || root.name || '').trim();\n\nif (!oi && /^support:(\\d+)/i.test(clientId)) {\n  oi = clientId.replace(/^support:/i, '');\n}\nconst qDigits = q.replace(/\\D/g, '');\nif (!oi && qDigits.length >= 5 && /^[\\d.\\s-]+$/.test(q)) {\n  oi = qDigits;\n  action = 'select';\n}\nif (oi) {\n  oi = oi.replace(/[^\\d.]/g, '');\n  if (oi && !oi.endsWith('.')) oi += '.';\n}\n\nconst route = (action === 'select' || oi) ? 'select' : 'search';\n\nreturn [{\n  json: {\n    oi,\n    q,\n    action,\n    route,\n    client_name: clientName,\n    client_id: clientId\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [220, 0],
+      "id": "code-normalizar-oi",
+      "name": "Normalizar OI"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "route-select",
+              "leftValue": "={{ $json.route }}",
+              "rightValue": "select",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [440, 0],
+      "id": "if-route",
+      "name": "Rota select?"
+    },
+    {
+      "parameters": {
+        "url": "=http://support-app.anymarket.internal/advancedSearch/marketplaces/{{ $json.oi }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, -120],
+      "id": "http-marketplaces",
+      "name": "HTTP Marketplaces por OI",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_SUPPORT_APP_BEARER",
+          "name": "Support App Bearer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=http://support-app.anymarket.internal/advancedSearch/{{ encodeURIComponent($('Normalizar OI').first().json.q) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [680, 120],
+      "id": "http-busca-nome",
+      "name": "HTTP Busca por Nome",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "CONFIGURE_SUPPORT_APP_BEARER",
+          "name": "Support App Bearer"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const meta = $('Normalizar OI').first().json;\nconst raw = $input.first().json;\nlet rows = raw;\nif (rows && rows.data && Array.isArray(rows.data)) rows = rows.data;\nif (!Array.isArray(rows)) rows = [];\n\nfunction isActive(v) {\n  if (v === true) return true;\n  if (v === false) return false;\n  const s = String(v || '').toUpperCase();\n  return ['ATIVADO','ACTIVE','ATIVO','1','TRUE','SIM','YES'].includes(s);\n}\nfunction isMeli(row) {\n  const label = String(row.integration || row.name || '').toUpperCase();\n  const norm = label.replace(/[^A-Z0-9]/g, '');\n  if (['MERCADOLIVRE','ML','MELI'].includes(norm)) return true;\n  return label.includes('MERCADO') && label.includes('LIVRE');\n}\nfunction tokenFrom(row) {\n  for (const k of ['api_key','apiKey','access_token','accessToken','token','value']) {\n    const v = String(row[k] || '').trim();\n    if (v) return v;\n  }\n  return '';\n}\n\nconst oi = meta.oi || '';\nconst oiDigits = oi.replace(/\\D/g, '');\nif (!oiDigits) {\n  return [{ json: { success: false, error: 'OI inválido ou ausente.' } }];\n}\nconst clientId = `support:${oiDigits}`;\nconst name = (meta.client_name || '').trim() || `Cliente ${oiDigits}`;\n\nlet meliToken = '';\nconst integrations = [];\nfor (const row of rows) {\n  if (!row || typeof row !== 'object') continue;\n  const label = String(row.integration || '').trim();\n  if (label && !integrations.includes(label)) integrations.push(label);\n  if (isMeli(row) && isActive(row.active)) {\n    const t = tokenFrom(row);\n    if (t && !meliToken) meliToken = t;\n  }\n}\n\nreturn [{\n  json: {\n    success: true,\n    oi,\n    client: {\n      id: clientId,\n      name,\n      platform: name.replace(/[^A-Za-z0-9]/g, '').toUpperCase() || 'ANYMARKET',\n      oi,\n      source: 'support',\n      has_ml: Boolean(meliToken),\n      has_gumga: false,\n      has_sku_webhook: true,\n      has_meli_token_webhook: false,\n      marketplaces: integrations,\n      backoffice_api_ok: true\n    },\n    meli_token: meliToken\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, -120],
+      "id": "code-formatar-conta",
+      "name": "Formatar Conta e Token ML"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nlet rows = raw;\nif (rows && rows.data && Array.isArray(rows.data)) rows = rows.data;\nif (!Array.isArray(rows)) rows = [];\n\nconst seen = new Set();\nconst clients = [];\nfor (const row of rows) {\n  if (!row || typeof row !== 'object') continue;\n  const oiVal = String(row.hierarchyCode || row.id || '').trim();\n  const digits = oiVal.replace(/\\D/g, '');\n  if (!digits) continue;\n  const id = `support:${digits}`;\n  if (seen.has(id)) continue;\n  seen.add(id);\n  clients.push({\n    id,\n    name: String(row.name || id).trim(),\n    oi: oiVal.endsWith('.') ? oiVal : `${digits}.`,\n    active: Boolean(row.active),\n    source: 'support'\n  });\n}\nclients.sort((a, b) => {\n  if (a.active !== b.active) return a.active ? -1 : 1;\n  return a.name.localeCompare(b.name, 'pt-BR');\n});\n\nreturn [{ json: { success: true, clients } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [920, 120],
+      "id": "code-formatar-busca",
+      "name": "Formatar Lista Clientes"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1160, 0],
+      "id": "respond-webhook",
+      "name": "Responder Webhook"
+    }
+  ],
+  "connections": {
+    "Webhook Conta OI": {
+      "main": [[{ "node": "Normalizar OI", "type": "main", "index": 0 }]]
+    },
+    "Normalizar OI": {
+      "main": [[{ "node": "Rota select?", "type": "main", "index": 0 }]]
+    },
+    "Rota select?": {
+      "main": [
+        [{ "node": "HTTP Marketplaces por OI", "type": "main", "index": 0 }],
+        [{ "node": "HTTP Busca por Nome", "type": "main", "index": 0 }]
+      ]
+    },
+    "HTTP Marketplaces por OI": {
+      "main": [[{ "node": "Formatar Conta e Token ML", "type": "main", "index": 0 }]]
+    },
+    "HTTP Busca por Nome": {
+      "main": [[{ "node": "Formatar Lista Clientes", "type": "main", "index": 0 }]]
+    },
+    "Formatar Conta e Token ML": {
+      "main": [[{ "node": "Responder Webhook", "type": "main", "index": 0 }]]
+    },
+    "Formatar Lista Clientes": {
+      "main": [[{ "node": "Responder Webhook", "type": "main", "index": 0 }]]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

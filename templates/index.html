@@ -1443,10 +1443,10 @@
         <div class="field">
           <label class="field-label" for="input-client-search">
             <span>Conta AnyMarket</span>
-            <span class="opt">busca na support-app</span>
+            <span class="opt">OI ou nome · via n8n (rede DB1)</span>
           </label>
           <div class="client-search-wrap">
-            <input id="input-client-search" type="text" placeholder="Ex.: Kabum, Seleta, Magazine..." autocomplete="off" aria-label="Buscar cliente AnyMarket" tabindex="0" />
+            <input id="input-client-search" type="text" placeholder="OI (ex.: 259063586) ou nome da conta..." autocomplete="off" aria-label="Buscar cliente AnyMarket por OI ou nome" tabindex="0" />
             <div id="client-results" class="client-results" role="listbox" aria-label="Resultados de clientes"></div>
           </div>
           <select id="input-client" aria-label="Clientes salvos no servidor" tabindex="0">
@@ -1966,10 +1966,19 @@
     });
   }
 
+  function isLikelyOi(term) {
+    const digits = String(term || '').replace(/\D/g, '');
+    return digits.length >= 5 && /^[\d.\s-]+$/.test(String(term || '').trim());
+  }
+
   async function searchSupportClients(query) {
     const term = (query || '').trim();
-    if (term.length < 2) {
+    if (term.length < 2 && !isLikelyOi(term)) {
       closeClientResults();
+      return;
+    }
+    if (isLikelyOi(term)) {
+      await selectSupportClient(`support:${term.replace(/\D/g, '')}`, term);
       return;
     }
     try {
@@ -1983,7 +1992,7 @@
       renderClientResults(data.clients || []);
     } catch {
       $('client-chip').className = 'token-status err';
-      $('client-chip').textContent = 'Sem acesso à support-app. Verifique a VPN.';
+      $('client-chip').textContent = 'Falha na busca. Configure ANYMARKET_CLIENT_WEBHOOK_URL (n8n na rede DB1) ou VPN local.';
     }
   }
 
