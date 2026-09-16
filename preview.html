@@ -1,5 +1,5 @@
 <html lang="pt-BR"><head>
-  <link rel="icon" type="image/png" href="{{ url_for('static', filename='logo.png') }}">
+  <link rel="icon" type="image/png" href="/static/logo.png">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Seleta Auditor — Mercado Livre Catálogo vs Tradicional</title>
@@ -1798,7 +1798,7 @@
   </nav>
 
   <!-- ── CONFIG VIEW ── -->
-  <div id="view-config" class="view-container">
+  <div id="view-config" class="view-container" style="display: none;">
     <section class="hero">
       <h1>Auditoria de Anúncios<br><span class="g">Catálogo × Sem Catálogo</span></h1>
       <p>Insira apenas os <strong>SKUs</strong>. O sistema localiza os anúncios de Catálogo e Tradicional no Mercado Livre e compara fotos, preços, status e atributos.</p>
@@ -1817,13 +1817,13 @@
             <div id="client-results" class="client-results" role="listbox" aria-label="Resultados de clientes"></div>
           </div>
           <select id="input-client" aria-label="Clientes salvos no servidor" tabindex="0">
-            {% for client in clients %}
-            <option value="{{ client.id }}" {% if client.id == default_client_id %}selected{% endif %}>
-              {{ client.name }}{% if client.platform %} · {{ client.platform }}{% endif %}
+            
+            <option value="seleta" selected="">
+              Marca Seleta · SELETA
             </option>
-            {% endfor %}
+            
           </select>
-          <div id="client-chip" class="token-status"></div>
+          <div id="client-chip" class="token-status ok" style="display: flex;">259063586. · support-app · ML ligado · AMAZON, GUMGA, MERCADO LIVRE</div>
         </div>
 
         <div class="divider"></div>
@@ -1840,7 +1840,7 @@
             <button id="btn-refresh-token" class="btn-verify btn-refresh-token" type="button">Atualizar Token</button>
             <button id="btn-validate" class="btn-verify" type="button">Validar Token</button>
           </div>
-          <div id="token-chip" class="token-status"></div>
+          <div id="token-chip" class="token-status ok" style="display: flex;">✓ Mercado Livre ativo · KM20260806165159823 · ID 3595234463</div>
         </div>
 
         <div class="divider"></div>
@@ -1872,10 +1872,10 @@ MLB7520875292
       <div id="prog" class="progress-card">
         <div class="prog-top">
           <span><span class="spinner"></span><span id="prog-title">Buscando anúncios no Mercado Livre...</span></span>
-          <span id="prog-num" class="prog-pct">0%</span>
+          <span id="prog-num" class="prog-pct">100%</span>
         </div>
-        <div class="track"><div id="prog-fill" class="fill" style="width: 0%;"></div></div>
-        <span id="prog-msg" class="prog-detail"></span>
+        <div class="track"><div id="prog-fill" class="fill" style="width: 100%;"></div></div>
+        <span id="prog-msg" class="prog-detail">Carregando auditoria...</span>
       </div>
 
       <!-- Result Error -->
@@ -1904,7 +1904,7 @@ MLB7520875292
   </div>
 
   <!-- ── AUDIT DASHBOARD ── -->
-  <div id="view-audit" class="view-container" style="display:none;">
+  <div id="view-audit" class="view-container" style="display: flex;">
 
     <div class="audit-page-heading">
       <div>
@@ -1989,9 +1989,35 @@ MLB7520875292
       <div class="audit-sidebar">
         <div class="sidebar-header">
           <span>SKUs</span>
-          <span id="sidebar-count">0</span>
+          <span id="sidebar-count">2</span>
         </div>
-        <div id="items-list" style="display:flex; flex-direction:column; gap:5px;"></div>
+        <div id="items-list" style="display:flex; flex-direction:column; gap:5px;"><div class="item-card active" id="sidebar-item-0">
+        <img class="item-thumb" src="https://http2.mlstatic.com/D_821451-MLB117426584231_092026-O.jpg" onerror="this.style.opacity=.2" alt="">
+        <div class="item-info">
+          <div class="item-top">
+            <span class="item-sku-label">SKU 937123</span>
+            <div class="item-badges">
+              <span class="badge-dec pen">⏳</span>
+              <span class="badge warn">Alerta</span>
+            </div>
+          </div>
+          <span class="item-title">Jogo Super Mario Galaxy + Super Mario Galaxy 2 Nintendo</span>
+          <span class="item-mlbs-preview">Sem Catálogo | Trad: MLB7513259230</span>
+        </div>
+      </div><div class="item-card " id="sidebar-item-1">
+        <img class="item-thumb" src="https://http2.mlstatic.com/D_821451-MLB117426584231_092026-O.jpg" onerror="this.style.opacity=.2" alt="">
+        <div class="item-info">
+          <div class="item-top">
+            <span class="item-sku-label">SKU 937123</span>
+            <div class="item-badges">
+              <span class="badge-dec pen">⏳</span>
+              <span class="badge warn">Alerta</span>
+            </div>
+          </div>
+          <span class="item-title">Jogo Super Mario Galaxy + Super Mario Galaxy 2 Nintendo</span>
+          <span class="item-mlbs-preview">Sem Catálogo | Trad: MLB7513304458</span>
+        </div>
+      </div></div>
       </div>
 
       <!-- Detail Area -->
@@ -2088,7 +2114,7 @@ MLB7520875292
                 <img id="cat-main-img" src="" alt="Catálogo" style="display: none;">
                 <div class="photo-preview-overlay">🔍 Zoom</div>
               </div>
-              <div id="cat-thumbs" class="thumbs-strip"></div>
+              <div id="cat-thumbs" class="thumbs-strip"><span style="font-size:10.5px;color:var(--text-3)">Sem anúncio de catálogo</span></div>
             </div>
 
             <!-- ML Traditional Photos (Lado Direito) -->
@@ -2098,10 +2124,10 @@ MLB7520875292
                 <span id="trad-photo-count" class="photo-counter">7 foto(s)</span>
               </div>
               <div class="photo-preview-wrap" id="trad-preview-wrap">
-                <img id="trad-main-img" src="" alt="Tradicional" style="display: block;">
+                <img id="trad-main-img" src="https://http2.mlstatic.com/D_821451-MLB117426584231_092026-O.jpg" alt="Tradicional" style="display: block;">
                 <div class="photo-preview-overlay">🔍 Zoom</div>
               </div>
-              <div id="trad-thumbs" class="thumbs-strip"></div>
+              <div id="trad-thumbs" class="thumbs-strip"><button class="thumb-btn active"><img src="https://http2.mlstatic.com/D_821451-MLB117426584231_092026-O.jpg" alt=""></button><button class="thumb-btn "><img src="https://http2.mlstatic.com/D_805775-MLB117426584233_092026-O.jpg" alt=""></button><button class="thumb-btn "><img src="https://http2.mlstatic.com/D_862764-MLB117426584235_092026-O.jpg" alt=""></button><button class="thumb-btn "><img src="https://http2.mlstatic.com/D_911035-MLB117426584237_092026-O.jpg" alt=""></button><button class="thumb-btn "><img src="https://http2.mlstatic.com/D_906236-MLB117426584239_092026-O.jpg" alt=""></button><button class="thumb-btn "><img src="https://http2.mlstatic.com/D_745686-MLB117426584241_092026-O.jpg" alt=""></button><button class="thumb-btn "><img src="https://http2.mlstatic.com/D_652247-MLB117426584243_092026-O.jpg" alt=""></button></div>
             </div>
 
             <!-- AnyMarket Photos -->
@@ -2111,10 +2137,10 @@ MLB7520875292
                 <span id="any-photo-count" class="photo-counter">7 foto(s)</span>
               </div>
               <div class="photo-preview-wrap" id="any-preview-wrap">
-                <img id="any-main-img" src="" alt="AnyMarket" style="display: block;">
+                <img id="any-main-img" src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/259063586./95718845C858C6764B7163D505AF4FE0/original_image.jpg" alt="AnyMarket" style="display: block;">
                 <div class="photo-preview-overlay">🔍 Zoom</div>
               </div>
-              <div id="any-thumbs" class="thumbs-strip"></div>
+              <div id="any-thumbs" class="thumbs-strip"><button class="thumb-btn active"><img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/259063586./95718845C858C6764B7163D505AF4FE0/original_image.jpg" alt=""></button><button class="thumb-btn "><img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/259063586./5C3FF4EED984B3EBE775A519043FCB8C/original_image.jpg" alt=""></button><button class="thumb-btn "><img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/259063586./6335F194D19C57701B491ECA219D8D2C/original_image.jpg" alt=""></button><button class="thumb-btn "><img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/259063586./D47C9AD67E28FE1F2987544985FA3886/original_image.jpg" alt=""></button><button class="thumb-btn "><img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/259063586./779B4A467E1C21A48A9818D3429A6C5B/original_image.jpg" alt=""></button><button class="thumb-btn "><img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/259063586./07681DDF971987E92B06D418CBFF5295/original_image.jpg" alt=""></button><button class="thumb-btn "><img src="https://s3-sa-east-1.amazonaws.com/images.anymarket.com.br/259063586./1A158453CBF5EAA31E87468C1D7B622A/original_image.jpg" alt=""></button></div>
             </div>
           </div>
         </div>
@@ -2161,7 +2187,286 @@ MLB7520875292
                   <th style="text-align:center">Status</th>
                 </tr>
               </thead>
-              <tbody id="attributes-table-body"></tbody>
+              <tbody id="attributes-table-body"><tr>
+      <td class="cell-field">Código MLB / ID</td>
+      <td class="cell-val"><strong>—</strong></td>
+      <td class="cell-val"><strong>MLB7513259230</strong></td>
+      <td class="cell-val"><strong>7063708499</strong></td>
+      <td class="cell-status"><span class="badge info">ID</span></td>
+    </tr><tr>
+        <td class="cell-field">TÍTULO</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Jogo Super Mario Galaxy + Super Mario Galaxy 2 Nintendo</td>
+        <td class="cell-val">Jogo Super Mario Galaxy + Super Mario Galaxy 2 Nintendo</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">DESCRIÇÃO</td>
+        <td class="cell-val"><div style="max-height:120px; overflow-y:auto; font-size:11px; white-space:pre-wrap;">—</div></td>
+        <td class="cell-val"><div style="max-height:120px; overflow-y:auto; font-size:11px; white-space:pre-wrap;">Jogo SUPER MARIO GALAXY + SUPER MARIO GALAXY 2, Nintendo Switch: Aventura Interplanetária em Português do Brasil!
+  
+ Prepare-se para embarcar em uma jornada épica através do espaço sideral com o Jogo SUPER MARIO GALAXY + SUPER MARIO GALAXY 2 para Nintendo Switch. Este pacote imperdível traz duas das maiores aventuras 3D de plataforma do Mario, agora aprimoradas para o console híbrido da Nintendo. Explore o cosmos, salte por planetas e salve a Princesa Peach e a galáxia de Bowser, tudo com suporte a idioma em Português do Brasil e jogabilidade para 1 ou 2 jogadores! 
+  
+ 
+Duas Aventuras Clássicas Aprimoradas para o Nintendo Switch
+ Reviva ou descubra a magia de Super Mario Galaxy e Super Mario Galaxy 2, dois títulos aclamados que agora chegam ao Nintendo Switch com melhor resolução, interface de usuário aprimorada e conteúdo adicional. Use a versatilidade dos Joy-Con com controles de botão e movimento adaptados das versões originais do Wii, permitindo saltar, planar, balançar e coletar Estrelas do Poder com precisão e diversão. Uma oportunidade única de desfrutar dessas obras-primas onde e como quiser! 
+  
+ 
+SUPER MARIO GALAXY: Salve a Galáxia de Bowser e Rosalina
+ Em Super Mario Galaxy, Bowser sequestra a Princesa Peach durante o Festival das Estrelas, colocando toda a galáxia em perigo. Junte-se à misteriosa Rosalina e às adoráveis Lumas para restaurar o Observatório Cometário e resgatar a princesa. Utilize potenciadores icônicos como o Cogumelo Abelha para voar ou o Cogumelo Bu para flutuar e atravessar paredes, em uma aventura interplanetária cheia de criatividade e desafios únicos em gravidade zero. 
+  
+ 
+SUPER MARIO GALAXY 2: A Ajuda de Yoshi e Novas Habilidades
+  
+ A aventura continua em Super Mario Galaxy 2, onde Bowser está novamente causando problemas, mas desta vez Mario não estará sozinho! Conte com a ajuda de Lubba e sua nave e, o mais importante, forme uma equipe com o carismático Yoshi. Com Yoshi ao seu lado, você pode pular mais alto e mais longe,...</div></td>
+        <td class="cell-val"><div style="max-height:120px; overflow-y:auto; font-size:11px; white-space:pre-wrap;">Jogo SUPER MARIO GALAXY + SUPER MARIO GALAXY 2, Nintendo Switch: Aventura Interplanetária em Português do Brasil! Prepare-se para embarcar em uma jornada épica através do espaço sideral com o Jogo SUPER MARIO GALAXY + SUPER MARIO GALAXY 2 para Nintendo Switch. Este pacote imperdível traz duas das maiores aventuras 3D de plataforma do Mario, agora aprimoradas para o console híbrido da Nintendo. Explore o cosmos, salte por planetas e salve a Princesa Peach e a galáxia de Bowser, tudo com suporte a idioma em Português do Brasil e jogabilidade para 1 ou 2 jogadores! Duas Aventuras Clássicas Aprimoradas para o Nintendo Switch Reviva ou descubra a magia de Super Mario Galaxy e Super Mario Galaxy 2, dois títulos aclamados que agora chegam ao Nintendo Switch com melhor resolução, interface de usuário aprimorada e conteúdo adicional. Use a versatilidade dos Joy-Con com controles de botão e movimento adaptados das versões originais do Wii, permitindo saltar, planar, balançar e coletar Estrelas do Poder com precisão e diversão. Uma oportunidade única de desfrutar dessas obras-primas onde e como quiser! SUPER MARIO GALAXY: Salve a Galáxia de Bowser e Rosalina Em Super Mario Galaxy, Bowser sequestra a Princesa Peach durante o Festival das Estrelas, colocando toda a galáxia em perigo. Junte-se à misteriosa Rosalina e às adoráveis Lumas para restaurar o Observatório Cometário e resgatar a princesa. Utilize potenciadores icônicos como o Cogumelo Abelha para voar ou o Cogumelo Bu para flutuar e atravessar paredes, em uma aventura interplanetária cheia de criatividade e desafios únicos em gravidade zero. SUPER MARIO GALAXY 2: A Ajuda de Yoshi e Novas Habilidades A aventura continua em Super Mario Galaxy 2, onde Bowser está novamente causando problemas, mas desta vez Mario não estará sozinho! Conte com a ajuda de Lubba e sua nave e, o mais importante, forme uma equipe com o carismático Yoshi. Com Yoshi ao seu lado, você pode pular mais alto e mais longe, além de atacar inimigos com...</div></td>
+        <td class="cell-status"><span class="badge diff">Diff</span></td>
+      </tr><tr>
+        <td class="cell-field">MARCA</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Nintendo</td>
+        <td class="cell-val">Nintendo</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">MODELO</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">NT000059NSW</td>
+        <td class="cell-val">NT000059NSW</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">COR</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">TAMANHO</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">VOLTAGEM</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">EAN / GTIN</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">45496905682</td>
+        <td class="cell-val">45496905682</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">GÊNERO</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Unissex</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">KIT</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">CAPACIDADE</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">POTÊNCIA</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">MATERIAL</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">GARANTIA</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">CATEGORIA</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">MLB186456</td>
+        <td class="cell-val">Games/Nintendo/Jogos Nintendo</td>
+        <td class="cell-status"><span class="badge diff">Diff</span></td>
+      </tr><tr>
+        <td class="cell-field">PREÇO</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">R$ 447.2</td>
+        <td class="cell-val">R$ 447.2</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">ESTOQUE</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">64</td>
+        <td class="cell-val">64</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">ALTURA</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">2</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">LARGURA</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">11</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">PROFUNDIDADE</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">17</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">PESO</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">0.063</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">altura da embalagem do vendor</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">2 cm</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">ano de lancamento</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">2025</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">classificacao us</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">E</td>
+        <td class="cell-val">E</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">colecao</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Super Mario</td>
+        <td class="cell-val">Super Mario</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">comprimento da embalagem do vendor</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">17 cm</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">desenvolvedores</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Nintendo</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">e marca destacada</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Não</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">e marca tom</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Não</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">e multijogador</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Não</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">formato</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Físico</td>
+        <td class="cell-val">Físico</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">generos</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">RPG,Ação</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">idiomas da tela</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Inglês,Japonês</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">idiomas de audio</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Inglês,Japonês</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">idiomas de legendas</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Inglês,Japonês</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">largura da embalagem do vendor</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">11 cm</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">modo de jogo</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Offline</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">peso da embalagem do vendor</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">63 g</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">plataforma</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Nintendo Switch</td>
+        <td class="cell-val">Nintendo Switch</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">quantidade maxima de jogadores offline</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">2</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">regiao</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Brasil</td>
+        <td class="cell-val">Brasil</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">tamanho do arquivo</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">5.9 GB</td>
+        <td class="cell-val">—</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr><tr>
+        <td class="cell-field">titulo do jogo</td>
+        <td class="cell-val">—</td>
+        <td class="cell-val">Super Mario Galaxy + Super Mario Galaxy 2</td>
+        <td class="cell-val">Super Mario Galaxy + Super Mario Galaxy 2</td>
+        <td class="cell-status"><span class="badge warn">Aus. Cat</span></td>
+      </tr></tbody>
             </table>
           </div>
 
@@ -2296,8 +2601,8 @@ MLB7520875292
 
 <script>
   const $ = id => document.getElementById(id);
-  const SERVER_CLIENTS = {{ clients | default([]) | tojson }};
-  const DEFAULT_CLIENT_ID = {{ default_client_id | default('seleta') | tojson }};
+  const SERVER_CLIENTS = [{"backoffice_api_ok": true, "has_gumga": true, "has_meli_token_webhook": true, "has_ml": false, "has_sku_webhook": true, "id": "seleta", "marketplaces": [], "name": "Marca Seleta", "oi": "259075992.", "platform": "SELETA", "source": "env"}];
+  const DEFAULT_CLIENT_ID = "seleta";
   const CLIENT_STORAGE_KEY = 'auditor_client_id';
   const CLIENT_NAME_STORAGE_KEY = 'auditor_client_name';
   let selectedSupportClient = null;
@@ -2449,7 +2754,7 @@ MLB7520875292
       return;
     }
     try {
-      const res = await fetch(`{{ url_for("api_clients_search") }}?q=${encodeURIComponent(term)}`);
+      const res = await fetch(`/auditarcatalogo/api/clients/search?q=${encodeURIComponent(term)}`);
       const raw = await res.text();
       let data = {};
       try {
@@ -2503,7 +2808,7 @@ MLB7520875292
     chip.textContent = `Carregando ${clientName}...`;
     try {
       const oiHint = ($('input-client-search')?.value || '').trim();
-      const res = await fetch('{{ url_for("api_clients_select") }}', {
+      const res = await fetch('/auditarcatalogo/api/clients/select', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2598,7 +2903,7 @@ MLB7520875292
     form.append('file', file);
 
     try {
-      const res = await fetch('{{ url_for("api_import_spreadsheet") }}', { method: 'POST', body: form });
+      const res = await fetch('/auditarcatalogo/api/import_spreadsheet', { method: 'POST', body: form });
       const data = await res.json();
       if (!res.ok || !data.success) {
         chip.className = 'token-status err';
@@ -2629,7 +2934,7 @@ MLB7520875292
     chip.style.display = 'flex';
     chip.textContent = 'Renovando token via n8n...';
     try {
-      const res = await fetch('{{ url_for("api_refresh_token") }}', {
+      const res = await fetch('/auditarcatalogo/api/refresh_token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(clientPayload())
@@ -2661,7 +2966,7 @@ MLB7520875292
     $('btn-validate').textContent = '...';
     $('btn-validate').disabled = true;
     try {
-      const res  = await fetch('{{ url_for("api_validate_token") }}', {
+      const res  = await fetch('/auditarcatalogo/api/validate_token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token })
@@ -2725,7 +3030,7 @@ MLB7520875292
     }, 300);
 
     try {
-      const res = await fetch('{{ url_for("api_audit") }}', {
+      const res = await fetch('/auditarcatalogo/api/audit', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2870,7 +3175,7 @@ MLB7520875292
 
     try {
       showToast(`📊 Sincronizando ${mlb} com Google Planilhas...`, 'info');
-      const res = await fetch('{{ url_for("sync_google_sheet") }}', {
+      const res = await fetch('/api/sync_google_sheet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2912,7 +3217,7 @@ MLB7520875292
 
     showToast(`Enviando ${targets.length} anúncios aprovados para a Planilha...`, 'info');
     try {
-      const res = await fetch('{{ url_for("sync_google_sheet") }}', {
+      const res = await fetch('/api/sync_google_sheet', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3100,7 +3405,7 @@ MLB7520875292
       };
       if (hasAuditCache) payload.audit_items = auditItems;
 
-      const res = await fetch('{{ url_for("api_export") }}', {
+      const res = await fetch('/auditarcatalogo/api/export', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -3491,7 +3796,7 @@ MLB7520875292
     if (filteredItems[currentIndex]) renderAiPanel(filteredItems[currentIndex]);
 
     try {
-      const res = await fetch('{{ url_for("api_validate_ads") }}', {
+      const res = await fetch('/auditarcatalogo/api/validate-ads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items: targets }),
@@ -4032,4 +4337,6 @@ MLB7520875292
       .replace(/'/g, '&#039;');
   }
 </script>
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495" integrity="sha512-iIg7k2xntmwu6/uSb5tpc/hySgZc4eoL31yB29W6tJFo2akwjPWcEqnCEdJvGexCL0KEQwVYv5BlowfhVz26hg==" data-cf-beacon="{&quot;version&quot;:&quot;2024.11.0&quot;,&quot;token&quot;:&quot;fe0a7de61c7941d2952698c89abb8ece&quot;,&quot;r&quot;:1,&quot;spa&quot;:2}" crossorigin="anonymous"></script>
+
 </body></html>
