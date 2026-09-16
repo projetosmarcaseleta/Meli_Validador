@@ -127,6 +127,19 @@ def test_client_credentials_prefers_env_gumga_over_support(mock_get_gumga, _mock
     assert creds["gumga_token"] == "ENV-GUMGA"
     assert creds["any_platform"] == "SELETA"
     assert creds["backoffice_api_ok"] is True
+    assert creds["oi"] == "259063586."
+
+
+@patch("app.validate_gumga_token", return_value={"valid": True})
+@patch("app.get_gumga_token", return_value="ENV-GUMGA")
+def test_client_credentials_prefers_payload_oi(_mock_get_gumga, _mock_validate):
+    from app import _client_credentials
+
+    creds = _client_credentials({
+        "client_id": "seleta",
+        "oi": "259063586.",
+    })
+    assert creds["oi"] == "259063586."
 
 
 def test_api_clients_hides_secrets():

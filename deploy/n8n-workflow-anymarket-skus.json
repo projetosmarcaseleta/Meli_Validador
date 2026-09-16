@@ -10,9 +10,9 @@
       },
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-96, -288],
-      "id": "951750fb-8f31-4cad-9569-ce7b8ed1f195",
-      "name": "Webhook Receber SKUs1",
+      "position": [-272, -1504],
+      "id": "5311f2cd-5af0-43b9-aaab-483a9deefff4",
+      "name": "Webhook Receber SKUs3",
       "webhookId": "13894db2-d94b-428a-9a07-2430d3e64488"
     },
     {
@@ -21,9 +21,9 @@
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [128, -288],
-      "id": "09d1864d-4834-4eec-b442-0719fd967578",
-      "name": "Preparar SKUs1"
+      "position": [-48, -1504],
+      "id": "d7ea1743-2c17-473a-a07d-843fc145a444",
+      "name": "Preparar SKUs3"
     },
     {
       "parameters": {
@@ -31,7 +31,8 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "strict",
+            "version": 1
           },
           "conditions": [
             {
@@ -50,21 +51,21 @@
       },
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
-      "position": [280, -288],
-      "id": "if-oi-valido",
-      "name": "OI informado?"
+      "position": [176, -1504],
+      "id": "f69aeef8-a6b8-4500-a373-06c9405aaa32",
+      "name": "OI informado?1"
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=SELECT DISTINCT\n    s.id_in_client AS sku,\n    sm.id_in_marketplace AS mlb,\n    sm.is_catalog,\n    sm.status_in_marketplace,\n    s.id_product,\n    s.id AS sku_id\nFROM anymarket_prd.sku_marketplace AS sm\nLEFT JOIN anymarket_prd.sku AS s ON s.id = sm.id_sku\nWHERE sm.market_place = 'MERCADO_LIVRE'\n  AND sm.id_in_marketplace IS NOT NULL\n  AND s.oi = {{ $json.oiSql }}\n  AND s.id_in_client IN ({{ $json.skusInClause }})\nORDER BY s.id_in_client, sm.is_catalog DESC;",
+        "query": "SELECT DISTINCT\n    s.id_in_client AS sku,\n    sm.id_in_marketplace AS mlb,\n    sm.is_catalog,\n    sm.status_in_marketplace,\n    s.id_product,\n    s.id AS sku_id\nFROM anymarket_prd.sku_marketplace AS sm\nLEFT JOIN anymarket_prd.sku AS s ON s.id = sm.id_sku\nWHERE sm.market_place = 'MERCADO_LIVRE'\n  AND sm.id_in_marketplace IS NOT NULL\n  AND s.oi = {{ $json.oiSql }}\n  AND s.id_in_client IN ({{ $json.skusInClause }})\nORDER BY s.id_in_client, sm.is_catalog DESC;",
         "options": {}
       },
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.5,
-      "position": [352, -368],
-      "id": "a5ad7b9f-1f4c-4e6c-9ba6-bbfdbacd1a3e",
-      "name": "Consultar Replica AnyMarket1",
+      "position": [400, -1600],
+      "id": "0dccf451-8643-4e87-8874-6476346a09f6",
+      "name": "Consultar Replica AnyMarket3",
       "credentials": {
         "postgres": {
           "id": "YnbEc2aEdTjtn8EY",
@@ -74,23 +75,23 @@
     },
     {
       "parameters": {
-        "jsCode": "const prep = $('Preparar SKUs1').first().json;\nreturn [{\n  json: {\n    success: false,\n    error: prep.error || 'OI ausente. Selecione a conta AnyMarket antes de consultar SKUs.',\n    oi: prep.oi || '',\n    sku_map: {},\n    count: 0\n  }\n}];"
+        "jsCode": "const prep = $('Preparar SKUs3').first().json;\nreturn [{\n  json: {\n    success: false,\n    error: prep.error || 'OI ausente. Selecione a conta AnyMarket antes de consultar SKUs.',\n    oi: prep.oi || '',\n    sku_map: {},\n    count: 0\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [576, -200],
-      "id": "code-erro-oi",
-      "name": "Erro OI ausente"
+      "position": [624, -1408],
+      "id": "7a320cab-0b4d-47d6-9435-37a7b01d86db",
+      "name": "Erro OI ausente1"
     },
     {
       "parameters": {
-        "jsCode": "const prep = $('Preparar SKUs1').first().json;\nconst rows = $input.all().map(item => item.json);\n\nconst sku_map = {};\nfor (const s of prep.skus || []) {\n  sku_map[s] = { cat: [], trad: [], id_product: '', sku_id: '' };\n}\n\nfor (const row of rows) {\n  if (!row || !row.sku) continue;\n\n  const sku = String(row.sku).trim();\n  const mlb = String(row.mlb || '').trim().toUpperCase();\n  const isCatalog = Number(row.is_catalog || 0);\n  const status = String(row.status_in_marketplace || '').trim();\n  const idProduct = String(row.id_product || '').trim();\n  const skuId = String(row.sku_id || '').trim();\n\n  if (!sku_map[sku]) {\n    sku_map[sku] = { cat: [], trad: [], id_product: '', sku_id: '' };\n  }\n  if (idProduct && !sku_map[sku].id_product) sku_map[sku].id_product = idProduct;\n  if (skuId && !sku_map[sku].sku_id) sku_map[sku].sku_id = skuId;\n\n  if (mlb.startsWith('MLB')) {\n    const anuncio = { mlb, status };\n    if (isCatalog === 1) sku_map[sku].cat.push(anuncio);\n    else sku_map[sku].trad.push(anuncio);\n  }\n}\n\nreturn [{\n  json: {\n    success: true,\n    oi: prep.oi || '',\n    sku_map,\n    count: Object.keys(sku_map).length\n  }\n}];"
+        "jsCode": "const prep = $('Preparar SKUs3').first().json;\nconst rows = $input.all().map(item => item.json);\n\nconst sku_map = {};\nfor (const s of prep.skus || []) {\n  sku_map[s] = { cat: [], trad: [], id_product: '', sku_id: '' };\n}\n\nfor (const row of rows) {\n  if (!row || !row.sku) continue;\n\n  const sku = String(row.sku).trim();\n  const mlb = String(row.mlb || '').trim().toUpperCase();\n  const isCatalog = Number(row.is_catalog || 0);\n  const status = String(row.status_in_marketplace || '').trim();\n  const idProduct = String(row.id_product || '').trim();\n  const skuId = String(row.sku_id || '').trim();\n\n  if (!sku_map[sku]) {\n    sku_map[sku] = { cat: [], trad: [], id_product: '', sku_id: '' };\n  }\n  if (idProduct && !sku_map[sku].id_product) sku_map[sku].id_product = idProduct;\n  if (skuId && !sku_map[sku].sku_id) sku_map[sku].sku_id = skuId;\n\n  if (mlb.startsWith('MLB')) {\n    const anuncio = { mlb, status };\n    if (isCatalog === 1) sku_map[sku].cat.push(anuncio);\n    else sku_map[sku].trad.push(anuncio);\n  }\n}\n\nreturn [{\n  json: {\n    success: true,\n    oi: prep.oi || '',\n    sku_map,\n    count: Object.keys(sku_map).length\n  }\n}];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [576, -368],
-      "id": "35f30235-7329-4f16-949e-2bf7edce499e",
-      "name": "Formatar Catálogo vs Tradicional1"
+      "position": [624, -1600],
+      "id": "66f4ae87-e9fe-43fb-99fa-a1a3a9ae9e44",
+      "name": "Formatar Catálogo vs Tradicional3"
     },
     {
       "parameters": {
@@ -100,32 +101,32 @@
       },
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [784, -288],
-      "id": "18005ec6-4a33-4e4a-abb4-9769901c4b8e",
-      "name": "Responder Webhook1"
+      "position": [848, -1504],
+      "id": "7cd5fd97-8532-43c0-9c11-9e0ba755b0ab",
+      "name": "Responder Webhook3"
     }
   ],
   "connections": {
-    "Webhook Receber SKUs1": {
-      "main": [[{ "node": "Preparar SKUs1", "type": "main", "index": 0 }]]
+    "Webhook Receber SKUs3": {
+      "main": [[{ "node": "Preparar SKUs3", "type": "main", "index": 0 }]]
     },
-    "Preparar SKUs1": {
-      "main": [[{ "node": "OI informado?", "type": "main", "index": 0 }]]
+    "Preparar SKUs3": {
+      "main": [[{ "node": "OI informado?1", "type": "main", "index": 0 }]]
     },
-    "OI informado?": {
+    "OI informado?1": {
       "main": [
-        [{ "node": "Consultar Replica AnyMarket1", "type": "main", "index": 0 }],
-        [{ "node": "Erro OI ausente", "type": "main", "index": 0 }]
+        [{ "node": "Consultar Replica AnyMarket3", "type": "main", "index": 0 }],
+        [{ "node": "Erro OI ausente1", "type": "main", "index": 0 }]
       ]
     },
-    "Consultar Replica AnyMarket1": {
-      "main": [[{ "node": "Formatar Catálogo vs Tradicional1", "type": "main", "index": 0 }]]
+    "Consultar Replica AnyMarket3": {
+      "main": [[{ "node": "Formatar Catálogo vs Tradicional3", "type": "main", "index": 0 }]]
     },
-    "Formatar Catálogo vs Tradicional1": {
-      "main": [[{ "node": "Responder Webhook1", "type": "main", "index": 0 }]]
+    "Erro OI ausente1": {
+      "main": [[{ "node": "Responder Webhook3", "type": "main", "index": 0 }]]
     },
-    "Erro OI ausente": {
-      "main": [[{ "node": "Responder Webhook1", "type": "main", "index": 0 }]]
+    "Formatar Catálogo vs Tradicional3": {
+      "main": [[{ "node": "Responder Webhook3", "type": "main", "index": 0 }]]
     }
   },
   "pinData": {},

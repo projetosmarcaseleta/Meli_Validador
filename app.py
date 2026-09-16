@@ -24,6 +24,7 @@ from n8n_client import (
 )
 from support_app import (
     is_support_configured,
+    normalize_oi_value,
     parse_support_oi,
     search_organizations,
     support_client_id,
@@ -87,13 +88,17 @@ def _client_credentials(data: dict | None) -> dict:
         ).strip()
         any_platform = (client.platform or payload.get("any_platform") or ANYMARKET_PLATFORM or "SELETA").strip()
         backoffice_ok = getattr(client, "backoffice_api_ok", True)
+    payload_oi = normalize_oi_value(payload.get("oi"))
+    if not payload_oi:
+        payload_oi = parse_support_oi(str(payload.get("client_id") or ""))
+    oi = payload_oi or normalize_oi_value(client.oi) or ""
     return {
         "client": client,
         "gumga_token": gumga_token,
         "any_platform": any_platform,
         "sku_webhook_url": client.sku_webhook_url,
         "meli_token_webhook_url": client.meli_token_webhook_url or MELI_TOKEN_WEBHOOK_URL,
-        "oi": client.oi,
+        "oi": oi,
         "meli_access_token": client.meli_access_token,
         "backoffice_api_ok": backoffice_ok,
     }

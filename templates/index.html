@@ -1914,14 +1914,23 @@
     return '';
   }
 
+  function normalizeOiValue(raw) {
+    const digits = String(raw || '').replace(/\D/g, '');
+    return digits ? `${digits}.` : '';
+  }
+
   function getSelectedClientOi() {
-    const client = findClient(getSelectedClientId());
-    if (client && client.oi) return String(client.oi).trim();
     const search = ($('input-client-search')?.value || '').trim();
-    if (isLikelyOi(search)) {
-      const digits = search.replace(/\D/g, '');
-      return digits ? `${digits}.` : '';
+    if (isLikelyOi(search)) return normalizeOiValue(search);
+    if (selectedSupportClient && selectedSupportClient.oi) {
+      return normalizeOiValue(selectedSupportClient.oi);
     }
+    const clientId = getSelectedClientId();
+    if (String(clientId || '').toLowerCase().startsWith('support:')) {
+      return normalizeOiValue(clientId.replace(/^support:/i, ''));
+    }
+    const client = findClient(clientId);
+    if (client && client.oi) return normalizeOiValue(client.oi);
     return '';
   }
 

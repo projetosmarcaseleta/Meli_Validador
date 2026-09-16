@@ -2,6 +2,7 @@ from unittest.mock import patch
 
 from support_app import (
     meli_access_token_from_marketplaces,
+    normalize_oi_value,
     parse_support_oi,
     resolve_support_client,
     search_organizations,
@@ -14,6 +15,8 @@ def test_support_ids():
     assert parse_support_oi("support:259063586") == "259063586."
     assert parse_support_oi("259063586.") == "259063586."
     assert parse_support_oi("seleta") == ""
+    assert normalize_oi_value("259063586") == "259063586."
+    assert normalize_oi_value("259063586.") == "259063586."
 
 
 @patch("support_app.get_support_token", return_value="TOKEN")

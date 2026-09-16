@@ -1072,8 +1072,11 @@ def _resolve_skus_from_anymarket_db(
                 payload["client_id"] = client_id
             if platform:
                 payload["platform"] = platform
-            if oi:
-                payload["oi"] = oi
+            oi_norm = str(oi or "").strip()
+            if oi_norm:
+                payload["oi"] = oi_norm
+            elif client_id and str(client_id).lower().startswith("support:"):
+                print("[N8N WEBHOOK AVISO] OI ausente no POST — selecione a conta (campo OI) antes da auditoria.", flush=True)
             data = _post_sku_webhook(hook, payload, client_id)
             if data is not None:
                 incoming_map = data.get("sku_map") or {}
@@ -1189,8 +1192,11 @@ def _resolve_mlbs_from_anymarket_db(
                 payload["client_id"] = client_id
             if platform:
                 payload["platform"] = platform
-            if oi:
-                payload["oi"] = oi
+            oi_norm = str(oi or "").strip()
+            if oi_norm:
+                payload["oi"] = oi_norm
+            elif client_id and str(client_id).lower().startswith("support:"):
+                print("[N8N WEBHOOK AVISO] OI ausente no POST — selecione a conta (campo OI) antes da auditoria.", flush=True)
             data = _post_sku_webhook(hook, payload, client_id)
             if data is not None:
                 incoming_map = data.get("sku_map") or {}

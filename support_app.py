@@ -39,6 +39,12 @@ def parse_support_oi(client_id: str | None) -> str:
     return f"{match.group(1)}." if match else ""
 
 
+def normalize_oi_value(raw: str | None) -> str:
+    """Normaliza OI para formato AnyMarket (ex.: 259063586.)."""
+    digits = "".join(ch for ch in str(raw or "") if ch.isdigit())
+    return f"{digits}." if digits else ""
+
+
 def _headers() -> dict[str, str]:
     token = get_support_token()
     return {
